@@ -1,0 +1,14 @@
+{
+  "name": "jarvis",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "start": "node --env-file=.env server.js",
+    "check": "node --check server.js && node test/unit.mjs && node test/actions.mjs && node test/intents.mjs && node test/fallback.mjs && node test/fixes.mjs && node test/flow.mjs && node test/e2e.mjs",
+    "demo": "node test/demo.mjs"
+  }
+}
