@@ -2,7 +2,8 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { ASSISTANT_NAME, ROOT, PORT, HOST, DEMO } from './lib/config.js';
+import { ASSISTANT_NAME, ROOT, PORT, HOST, DEMO, HOSTED, ON_VERCEL, PUBLIC_URL, BASE_URL, PASSWORD } from './lib/config.js';
+import * as auth from './lib/auth.js';
 import { log, redact } from './lib/secrets.js';
 import * as keys from './lib/keys.js';
 import { loadModels, publicLevels } from './lib/models.js';
@@ -231,9 +232,10 @@ const send = (res, code, data, type = 'application/json; charset=utf-8', extra =
 const redirect = (res, to) => { res.writeHead(302, { Location: to, ...SEC_HEADERS }); res.end(); };
 
 // Só aceita a própria máquina (contra DNS rebinding) e, em escrita, exige cabeçalho próprio + mesma origem (contra CSRF).
-const ALLOWED_HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`, `[::1]:${PORT}`]);
+const ALLOWED_HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`, `[::1]:${PORT}`,
+  ...(HOSTED ? [PUBLIC_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL, process.env.VERCEL_URL] : []).filter(Boolean).map(h => h.replace(/^https?:\/\//, '').toLowerCase())]);
 function guard(req, url) {
-  if (!ALLOWED_HOSTS.has(String(req.headers.host || '').toLowerCase())) throw new HttpError(403, 'Acesso permitido só pela própria máquina.');
+  if (!ALLOWED_HOSTS.has(String(req.headers.host || '').toLowerCase())) throw new HttpError(403, HOSTED ? 'Endereço não reconhecido. Defina JARVIS_PUBLIC_URL com o endereço do site.' : 'Acesso permitido só pela própria máquina.');
   if (req.method !== 'GET' && url.startsWith('/api/') || url.startsWith('/auth/') && req.method === 'POST') {
     if (req.headers['x-jarvis'] !== '1') throw new HttpError(403, 'Requisição recusada.');
     const o = req.headers.origin;
@@ -284,8 +286,8 @@ async function route(req, res, u) {
     return redirect(res, google.authRedirect());
   }
   if (M === 'GET' && url === '/auth/google/callback') {
-    try { await google.handleCallback(u.searchParams); clearTriageCache(); const p = getProfile(); if (p) saveProfile({ gmailInvite: 'connected' }, p); return redirect(res, `http://localhost:${PORT}/?gmail=ok`); }
-    catch (e) { log.warn('[gmail] login falhou:', e.message); return redirect(res, `http://localhost:${PORT}/?gmail=erro`); }
+    try { await google.handleCallback(u.searchParams); clearTriageCache(); const p = getProfile(); if (p) saveProfile({ gmailInvite: 'connected' }, p); return redirect(res, '/?gmail=ok'); }
+    catch (e) { log.warn('[gmail] login falhou:', e.message); return redirect(res, '/?gmail=erro'); }
   }
   if (M === 'POST' && url === '/auth/google/disconnect') { await google.disconnect(); clearTriageCache(); return send(res, 200, integrations()); }
 
@@ -414,10 +416,48 @@ async function route(req, res, u) {
   send(res, 404, { error: 'Não encontrado.' });
 }
 
+
+/* ---------- Modo hospedado: senha antes de tudo ---------- */
+const clientIp = req => String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '?').split(',')[0].trim();
+const LOGIN_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JARVIS</title>
+<style>html,body{height:100%;margin:0}body{display:grid;place-items:center;background:#0d0e10;color:#f2ece3;font:16px/1.4 system-ui,sans-serif}
+form{display:grid;gap:12px;width:min(320px,86vw)}h1{font-size:14px;letter-spacing:.3em;font-weight:500;color:#aaa;margin:0 0 4px}
+input,button{font:inherit;padding:12px 14px;border-radius:10px;border:1px solid #333;background:#16181b;color:inherit}button{background:#f5b53b;color:#111;border:0;font-weight:700;cursor:pointer}
+#e{color:#ff9d8a;min-height:1.2em;font-size:14px;margin:0}</style></head><body>
+<form id="f"><h1>JARVIS</h1><input id="p" type="password" placeholder="Senha" autocomplete="current-password" autofocus required><button>Entrar</button><p id="e" role="alert"></p></form>
+<script>f.onsubmit=async e=>{e.preventDefault();e_.textContent='';try{const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json','x-jarvis':'1'},body:JSON.stringify({password:p.value})});
+const j=await r.json().catch(()=>({}));if(r.ok)location.href='/';else e_.textContent=j.error||'Não consegui entrar.'}catch{e_.textContent='Sem conexão.'}};const e_=document.getElementById('e');</script></body></html>`;
+const SECURE = BASE_URL.startsWith('https://');
+// Devolve true quando já respondeu (login, bloqueio ou pedido de senha).
+async function gate(req, res, u) {
+  const url = u.pathname, M = req.method;
+  if (!PASSWORD) {
+    send(res, 503, 'JARVIS hospedado precisa de senha. Defina a variável JARVIS_PASSWORD no painel da hospedagem e faça um novo deploy.', 'text/plain; charset=utf-8');
+    return true;
+  }
+  const logged = auth.validCookie(req.headers.cookie);
+  if (M === 'GET' && url === '/login') {
+    if (logged) { redirect(res, '/'); return true; }
+    send(res, 200, LOGIN_PAGE, 'text/html; charset=utf-8', { 'Content-Security-Policy': CSP }); return true;
+  }
+  if (M === 'POST' && url === '/api/login') {
+    const ip = clientIp(req);
+    if (auth.blocked(ip)) throw new HttpError(429, 'Muitas tentativas. Aguarde 15 minutos.');
+    const b = await readBody(req, 2_000);
+    if (!auth.checkPassword(b.password ?? '')) { auth.fail(ip); await new Promise(r => setTimeout(r, 500)); throw new HttpError(401, 'Senha incorreta.'); }
+    auth.ok(ip);
+    send(res, 200, { ok: true }, 'application/json; charset=utf-8', { 'Set-Cookie': auth.cookieHeader(auth.makeCookieValue(), SECURE) }); return true;
+  }
+  if (M === 'POST' && url === '/api/logout') { send(res, 200, { ok: true }, 'application/json; charset=utf-8', { 'Set-Cookie': auth.cookieHeader('', SECURE) }); return true; }
+  if (logged) return false;
+  if (url.startsWith('/api/')) { send(res, 401, { error: 'Entre com a senha.', login: true }); return true; }
+  redirect(res, '/login'); return true;
+}
+
 export const server = http.createServer(async (req, res) => {
   let u;
   try { u = new URL(req.url, 'http://localhost'); } catch { return send(res, 400, { error: 'URL inválida.' }); }
-  try { guard(req, u.pathname); await route(req, res, u); }
+  try { guard(req, u.pathname); if (HOSTED && await gate(req, res, u)) return; await route(req, res, u); }
   catch (e) {
     let code = 500, msg = 'Algo deu errado no servidor.';
     if (e instanceof HttpError || Number.isInteger(e?.code)) { code = e.code; msg = e.message; }
@@ -428,9 +468,9 @@ export const server = http.createServer(async (req, res) => {
   }
 });
 
-if (process.env.JARVIS_NO_LISTEN !== '1') {
+if (process.env.JARVIS_NO_LISTEN !== '1' && !ON_VERCEL) {
   server.listen(PORT, HOST, () => {
-    log.info(`${ASSISTANT_NAME} no ar: http://localhost:${PORT}`);
+    log.info(`${ASSISTANT_NAME} no ar: http://localhost:${PORT}${HOSTED ? ` (hospedado: ${PUBLIC_URL})` : ''}`);
     if (!keys.hasKey('gemini') && !keys.hasKey('anthropic')) log.warn('Aviso: nenhuma chave de IA. Salve uma nas integrações (topo da tela) ou no .env.');
     if (!keys.status('elevenlabs').configured) log.warn('Aviso: ElevenLabs não configurada; a voz ficará indisponível.');
   });

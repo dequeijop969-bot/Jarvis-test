@@ -64,3 +64,13 @@ A configuração é validada ao iniciar; níveis sem modelo aparecem como "sem m
 ## Várias contas da ElevenLabs (fallback)
 
 No `.env`, preencha `ELEVENLABS_API_KEY`, `ELEVENLABS_API_KEY_2`, `_3` e `_4`. A primeira é usada sempre; a próxima só entra quando a anterior falha (sem créditos, limite de uso, chave inválida ou instabilidade). O `ELEVENLABS_VOICE_ID` vale para todas; se a voz for diferente em alguma conta, use `ELEVENLABS_VOICE_ID_2`, `_3`, `_4`.
+
+## Hospedar na Vercel (modo hospedado)
+
+O JARVIS foi feito para rodar na sua máquina. Para hospedar, ele precisa de **senha** (sem ela o site recusa tudo) e de um endereço público. Limite importante: a Vercel não guarda arquivos (só `/tmp`, que some quando a função "dorme"). Chaves de API vindas das variáveis de ambiente funcionam sempre; **o login do Google (Gmail/Agenda) e as chaves salvas pela tela de Integrações podem se perder** e exigir reconectar. Para uso diário com Gmail, prefira rodar local ou uma hospedagem com disco (Render, Railway, Fly).
+
+1. Suba esta pasta inteira para o GitHub (com `api/` e `vercel.json`) e importe na Vercel. Framework: **Other**; sem comando de build.
+2. Variáveis de ambiente (Production): `JARVIS_PASSWORD` (obrigatória, use uma senha longa), `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY` (+ `_2`, `_3`, `_4`), `ELEVENLABS_VOICE_ID`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. Recomendado: `JARVIS_PUBLIC_URL=https://seu-projeto.vercel.app` e `JARVIS_PROFILE` (veja `.env.example`).
+3. Google Cloud > Credenciais > seu cliente OAuth: em "URIs de redirecionamento autorizados" adicione `https://seu-projeto.vercel.app/auth/google/callback`.
+4. Depois de mudar variáveis, faça **Redeploy**. Abra o site, entre com a senha e confira `/api/health`.
+5. Não coloque o token de escrita do GitHub (`GITHUB_TOKEN_WRITE`) numa instalação pública. Use só o de leitura.

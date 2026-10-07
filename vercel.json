@@ -1,0 +1,9 @@
+{
+  "routes": [{ "src": "/(.*)", "dest": "/api/index.js" }],
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 60,
+      "includeFiles": "{index.html,models.config.json,lib/**}"
+    }
+  }
+}

@@ -1098,6 +1098,7 @@ async function req(method,u,b){
   try{r=await fetch(u,{method,headers:method==='GET'?{}:{'content-type':'application/json','x-jarvis':'1'},body:method==='GET'||b===undefined?undefined:JSON.stringify(b)})}
   catch{throw Object.assign(new Error(`Sem conexão com o servidor do ${NAME}. Ele está rodando?`),{status:0})}
   let j=null;try{j=await r.json()}catch{}
+  if(r.status===401&&j?.login){location.href='/login';throw Object.assign(new Error('Entre com a senha.'),{status:401})}
   if(!r.ok)throw Object.assign(new Error(j?.error||`Erro ${r.status}.`),{status:r.status});
   return j;
 }

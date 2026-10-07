@@ -88,3 +88,10 @@ Três defeitos relatados, três causas diferentes.
 - Compromissos, notícias, e-mails e PRs não apareciam nos cartões: a animação de entrada terminava com o texto invisível. Corrigido.
 - Cartão do clima cortado embaixo e bolinha dupla nos repositórios: corrigidos.
 - Personalidade: novo bloco de estilo JARVIS (mordomo britânico, sereno, humor seco, antecipa o próximo passo), usado na conversa e na visão da tela. A saudação termina com um fecho de mordomo, e as falas fixas (clima, notícias, e-mails) ficaram no mesmo tom.
+
+## Modo hospedado (Vercel)
+- **Erro 404 em /api/state:** na Vercel só o `index.html` era servido; o `server.js` nunca rodava. Novo `api/index.js` + `vercel.json` mandam todas as rotas para o servidor.
+- **Senha obrigatória** (`JARVIS_PASSWORD`, cookie assinado de 7 dias, 5 erros por IP = 15 min de bloqueio). Sem senha definida, o site responde 503 em tudo.
+- Domínio público aceito (`JARVIS_PUBLIC_URL` ou o domínio de produção da Vercel); redirecionamentos do Google deixaram de apontar para localhost; o `state` do OAuth não depende de memória (a função pode trocar de instância entre ida e volta).
+- `JARVIS_PROFILE` recria o perfil quando o disco é apagado. Dados gravados vão para `/tmp` (somem quando a função dorme).
+- Uso local não muda: continua escutando só em 127.0.0.1, sem senha.
