@@ -100,3 +100,5 @@ Três defeitos relatados, três causas diferentes.
 - Removida a senha compartilhada. Hospedado: entra só quem está em JARVIS_ALLOWED_GITHUB (falha fechada: sem configuração, o site recusa tudo). Sessão em cookie criptografado (AES-GCM), sem banco; state do OAuth contra CSRF; refresh do token do GitHub App.
 - O token do login serve para ler o GitHub (se não houver token manual). Escrita no GitHub continua exigindo o token de escrita separado.
 - Formulário de perfil: idioma em botões, lista de cidades como menu, foco mais claro.
+
+- Hospedado: tokens do Google/Canva agora ficam no cookie de sessão criptografado (a Vercel apaga /tmp, e o Gmail "desconectava" sozinho).

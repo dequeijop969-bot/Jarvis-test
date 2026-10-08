@@ -482,6 +482,16 @@ export const server = http.createServer(async (req, res) => {
     if (sess?.gh?.refresh && sess.gh.exp && sess.gh.exp < Date.now()) {
       try { sess = { ...sess, gh: await auth.githubRefresh(sess.gh.refresh) }; res.setHeader('Set-Cookie', auth.sessionCookie(sess, SECURE)); } catch { sess = { ...sess, gh: null }; }
     }
+    if (sess) { // tokens novos/renovados (Google, Canva) viajam no cookie criptografado
+      const wh = res.writeHead;
+      res.writeHead = function (...a) {
+        if (sess._dirty && !res.headersSent) {
+          const { _dirty, ...rest } = sess, prev = res.getHeader('Set-Cookie');
+          res.setHeader('Set-Cookie', [...(Array.isArray(prev) ? prev : prev ? [prev] : []), auth.sessionCookie(rest, SECURE)]);
+        }
+        return wh.apply(this, a);
+      };
+    }
     if (HOSTED && await gate(req, res, u, sess)) return;
     await session.runWith(sess, () => route(req, res, u));
   }
