@@ -95,3 +95,8 @@ Três defeitos relatados, três causas diferentes.
 - Domínio público aceito (`JARVIS_PUBLIC_URL` ou o domínio de produção da Vercel); redirecionamentos do Google deixaram de apontar para localhost; o `state` do OAuth não depende de memória (a função pode trocar de instância entre ida e volta).
 - `JARVIS_PROFILE` recria o perfil quando o disco é apagado. Dados gravados vão para `/tmp` (somem quando a função dorme).
 - Uso local não muda: continua escutando só em 127.0.0.1, sem senha.
+
+## Login com GitHub (sem senha)
+- Removida a senha compartilhada. Hospedado: entra só quem está em JARVIS_ALLOWED_GITHUB (falha fechada: sem configuração, o site recusa tudo). Sessão em cookie criptografado (AES-GCM), sem banco; state do OAuth contra CSRF; refresh do token do GitHub App.
+- O token do login serve para ler o GitHub (se não houver token manual). Escrita no GitHub continua exigindo o token de escrita separado.
+- Formulário de perfil: idioma em botões, lista de cidades como menu, foco mais claro.

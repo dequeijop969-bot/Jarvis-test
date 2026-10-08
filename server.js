@@ -2,7 +2,8 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { ASSISTANT_NAME, ROOT, PORT, HOST, DEMO, HOSTED, ON_VERCEL, PUBLIC_URL, BASE_URL, PASSWORD } from './lib/config.js';
+import { ASSISTANT_NAME, ROOT, PORT, HOST, DEMO, HOSTED, ON_VERCEL, PUBLIC_URL, BASE_URL, ALLOWED_GITHUB, SESSION_SECRET } from './lib/config.js';
+import * as session from './lib/session.js';
 import * as auth from './lib/auth.js';
 import { log, redact } from './lib/secrets.js';
 import * as keys from './lib/keys.js';
@@ -61,7 +62,7 @@ function briefGithub(s) {
 
 /* ---------- Estado para a interface (nada sensível) ---------- */
 function integrations() {
-  return { gmail: google.googleStatus(), canva: canva.canvaStatus(), keys: keys.allStatus(), actions: actions.allToggles() };
+  return { gmail: google.googleStatus(), canva: canva.canvaStatus(), keys: keys.allStatus(), actions: actions.allToggles(), ghlogin: session.current() ? { login: session.current().login, token: !!session.current().gh } : null, ghloginAvailable: auth.githubConfigured(), hosted: HOSTED };
 }
 function publicProfile(p) {
   if (!p) return null;
@@ -319,7 +320,7 @@ async function route(req, res, u) {
     const st = keys.allStatus();
     await Promise.all([
       (async () => { if (google.canCalendar()) try { const ag = await withTimeout(calendar.agenda('today', p), 6000); agendaText = calendar.agendaSpeech(ag, 'day', a); agenda = briefAgenda(ag); } catch { /* sem agenda, sem drama */ } })(),
-      (async () => { if (st.github_read?.configured) try { const s = await withTimeout(github.summary(), 6000); githubText = github.summarySpeech(s, 'all'); gh = briefGithub(s); } catch { /* idem */ } })(),
+      (async () => { if (st.github_read?.configured || session.loginToken()) try { const s = await withTimeout(github.summary(), 6000); githubText = github.summarySpeech(s, 'all'); gh = briefGithub(s); } catch { /* idem */ } })(),
       (async () => { if (p.news !== false) try { news = await withTimeout(headlines(p), 6000); newsText = newsSpeech(news); } catch { /* sem notícias, segue */ } })()
     ]);
     // "brief" alimenta os pop-ups da saudação; os textos continuam para a fala.
@@ -413,51 +414,77 @@ async function route(req, res, u) {
     catch (e) { actions.auditLog({ service: c.kind.split('_')[0], action: c.kind, target: '?', result: 'erro', userSnippet: '' }); throw new HttpError(e.code === 501 ? 501 : 502, e.code ? e.message : 'Não consegui executar a ação.'); }
   }
 
+  if (M === 'GET' && (url === '/auth/github' || url === '/auth/github/callback')) { if (await githubAuth(req, res, u)) return; }
+  if (M === 'POST' && url === '/api/logout') return send(res, 200, { ok: true }, 'application/json; charset=utf-8', { 'Set-Cookie': auth.sessionCookie(null, SECURE) });
+
   send(res, 404, { error: 'Não encontrado.' });
 }
 
 
-/* ---------- Modo hospedado: senha antes de tudo ---------- */
-const clientIp = req => String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '?').split(',')[0].trim();
-const LOGIN_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JARVIS</title>
-<style>html,body{height:100%;margin:0}body{display:grid;place-items:center;background:#0d0e10;color:#f2ece3;font:16px/1.4 system-ui,sans-serif}
-form{display:grid;gap:12px;width:min(320px,86vw)}h1{font-size:14px;letter-spacing:.3em;font-weight:500;color:#aaa;margin:0 0 4px}
-input,button{font:inherit;padding:12px 14px;border-radius:10px;border:1px solid #333;background:#16181b;color:inherit}button{background:#f5b53b;color:#111;border:0;font-weight:700;cursor:pointer}
-#e{color:#ff9d8a;min-height:1.2em;font-size:14px;margin:0}</style></head><body>
-<form id="f"><h1>JARVIS</h1><input id="p" type="password" placeholder="Senha" autocomplete="current-password" autofocus required><button>Entrar</button><p id="e" role="alert"></p></form>
-<script>f.onsubmit=async e=>{e.preventDefault();e_.textContent='';try{const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json','x-jarvis':'1'},body:JSON.stringify({password:p.value})});
-const j=await r.json().catch(()=>({}));if(r.ok)location.href='/';else e_.textContent=j.error||'Não consegui entrar.'}catch{e_.textContent='Sem conexão.'}};const e_=document.getElementById('e');</script></body></html>`;
+/* ---------- Hospedado: entrar com GitHub (sem senha compartilhada) ---------- */
 const SECURE = BASE_URL.startsWith('https://');
-// Devolve true quando já respondeu (login, bloqueio ou pedido de senha).
-async function gate(req, res, u) {
+const LOGIN_MSG = { config: 'O login com GitHub ainda não foi configurado no servidor.', estado: 'A sessão de login expirou. Tente de novo.', negado: 'O login foi cancelado.', recusado: 'Esta conta do GitHub não tem acesso ao JARVIS.', falhou: 'Não consegui entrar com o GitHub. Tente de novo.' };
+const loginPage = erro => `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JARVIS</title>
+<style>html,body{height:100%;margin:0}body{display:grid;place-items:center;background:#0f1012;color:#eeece7;font:16px/1.5 system-ui,sans-serif}
+main{display:grid;gap:14px;justify-items:center;text-align:center;width:min(340px,86vw)}h1{font-size:15px;letter-spacing:.38em;font-weight:500;color:#a5a29b;margin:0}
+p{margin:0;color:#a5a29b;font-size:14px}a{display:flex;gap:10px;align-items:center;justify-content:center;width:100%;box-sizing:border-box;padding:13px 16px;border-radius:12px;background:#f2b33d;color:#16120a;font-weight:700;text-decoration:none}
+a:hover{filter:brightness(1.08)}a:focus-visible{outline:2px solid #fff;outline-offset:3px}svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#e{color:#ff9d8a;font-size:14px}small{color:#6f6c66}</style></head><body><main><h1>JARVIS</h1><p>Entre para continuar</p>
+<a href="/auth/github"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="9" r="2.2"/><path d="M6 8.2v7.6M18 11.2c0 4-6 2-12 5"/></svg>Entrar com GitHub</a>
+${LOGIN_MSG[erro] ? `<p id="e" role="alert">${LOGIN_MSG[erro]}</p>` : ''}<small>Só contas autorizadas pelo dono.</small></main></body></html>`;
+const redirectWith = (res, loc, headers = {}) => { res.writeHead(302, { Location: loc, ...headers }); res.end(); };
+
+// /auth/github e /auth/github/callback. Hospedado: é a porta de entrada (só contas da lista). Local: apenas conecta a leitura do GitHub.
+async function githubAuth(req, res, u) {
+  const fail = c => { redirectWith(res, `${HOSTED ? '/login' : '/'}?erro=${c}`, { 'Set-Cookie': auth.clearStateCookie(SECURE) }); return true; };
+  if (u.pathname === '/auth/github') {
+    if (!auth.githubConfigured()) return fail('config');
+    const st = auth.newState(SECURE);
+    redirectWith(res, auth.githubAuthUrl(st.state), { 'Set-Cookie': st.cookie }); return true;
+  }
+  if (u.pathname === '/auth/github/callback') {
+    if (u.searchParams.get('error')) return fail('negado');
+    const code = u.searchParams.get('code'), state = u.searchParams.get('state');
+    if (!code || !auth.checkState(req.headers.cookie, state)) return fail('estado');
+    try {
+      const gh = await auth.githubExchange(code), user = await auth.githubUser(gh.access);
+      if (HOSTED && !ALLOWED_GITHUB.has(user.login.toLowerCase())) { log.warn('[github] login recusado:', user.login); return fail('recusado'); }
+      redirectWith(res, '/', { 'Set-Cookie': [auth.sessionCookie({ login: user.login, name: user.name, gh }, SECURE), auth.clearStateCookie(SECURE)] }); return true;
+    } catch (e) { log.warn('[github] login falhou:', e.message); return fail('falhou'); }
+  }
+  return false;
+}
+// Devolve true quando já respondeu (login, recusa ou pedido de login). Falha FECHADA: sem configuração, ninguém entra.
+async function gate(req, res, u, sess) {
   const url = u.pathname, M = req.method;
-  if (!PASSWORD) {
-    send(res, 503, 'JARVIS hospedado precisa de senha. Defina a variável JARVIS_PASSWORD no painel da hospedagem e faça um novo deploy.', 'text/plain; charset=utf-8');
+  if (!SESSION_SECRET || !auth.githubConfigured() || !ALLOWED_GITHUB.size) {
+    send(res, 503, 'JARVIS hospedado precisa do login com GitHub. Defina JARVIS_SESSION_SECRET, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET e JARVIS_ALLOWED_GITHUB no painel da hospedagem e faça um novo deploy.', 'text/plain; charset=utf-8');
     return true;
   }
-  const logged = auth.validCookie(req.headers.cookie);
+  if (M === 'GET' && (url === '/auth/github' || url === '/auth/github/callback')) return githubAuth(req, res, u);
+  const logged = !!(sess && ALLOWED_GITHUB.has(sess.login.toLowerCase())); // reconfere a lista a cada requisição
+  if (M === 'POST' && url === '/api/logout') { send(res, 200, { ok: true }, 'application/json; charset=utf-8', { 'Set-Cookie': auth.sessionCookie(null, SECURE) }); return true; }
   if (M === 'GET' && url === '/login') {
     if (logged) { redirect(res, '/'); return true; }
-    send(res, 200, LOGIN_PAGE, 'text/html; charset=utf-8', { 'Content-Security-Policy': CSP }); return true;
+    send(res, 200, loginPage(u.searchParams.get('erro')), 'text/html; charset=utf-8', { 'Content-Security-Policy': CSP }); return true;
   }
-  if (M === 'POST' && url === '/api/login') {
-    const ip = clientIp(req);
-    if (auth.blocked(ip)) throw new HttpError(429, 'Muitas tentativas. Aguarde 15 minutos.');
-    const b = await readBody(req, 2_000);
-    if (!auth.checkPassword(b.password ?? '')) { auth.fail(ip); await new Promise(r => setTimeout(r, 500)); throw new HttpError(401, 'Senha incorreta.'); }
-    auth.ok(ip);
-    send(res, 200, { ok: true }, 'application/json; charset=utf-8', { 'Set-Cookie': auth.cookieHeader(auth.makeCookieValue(), SECURE) }); return true;
-  }
-  if (M === 'POST' && url === '/api/logout') { send(res, 200, { ok: true }, 'application/json; charset=utf-8', { 'Set-Cookie': auth.cookieHeader('', SECURE) }); return true; }
   if (logged) return false;
-  if (url.startsWith('/api/')) { send(res, 401, { error: 'Entre com a senha.', login: true }); return true; }
+  if (url.startsWith('/api/')) { send(res, 401, { error: 'Entre com o GitHub.', login: true }); return true; }
   redirect(res, '/login'); return true;
 }
 
 export const server = http.createServer(async (req, res) => {
   let u;
   try { u = new URL(req.url, 'http://localhost'); } catch { return send(res, 400, { error: 'URL inválida.' }); }
-  try { guard(req, u.pathname); if (HOSTED && await gate(req, res, u)) return; await route(req, res, u); }
+  try {
+    guard(req, u.pathname);
+    let sess = auth.readSession(req.headers.cookie);
+    if (sess?.gh?.refresh && sess.gh.exp && sess.gh.exp < Date.now()) {
+      try { sess = { ...sess, gh: await auth.githubRefresh(sess.gh.refresh) }; res.setHeader('Set-Cookie', auth.sessionCookie(sess, SECURE)); } catch { sess = { ...sess, gh: null }; }
+    }
+    if (HOSTED && await gate(req, res, u, sess)) return;
+    await session.runWith(sess, () => route(req, res, u));
+  }
   catch (e) {
     let code = 500, msg = 'Algo deu errado no servidor.';
     if (e instanceof HttpError || Number.isInteger(e?.code)) { code = e.code; msg = e.message; }

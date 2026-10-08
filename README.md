@@ -1,3 +1,5 @@
+> **Atualização:** o modo hospedado não usa mais senha (`JARVIS_PASSWORD` foi removida). Agora é **Entrar com GitHub**: defina `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `JARVIS_ALLOWED_GITHUB` (quem pode entrar) e `JARVIS_SESSION_SECRET`. Callback: `https://SEU-SITE/auth/github/callback`. Veja `.env.example`.
+
 # JARVIS
 
 Assistente de IA por voz, em português do Brasil, com alma de mordomo digital: você fala, ele pensa (Gemini ou Anthropic), responde com voz (ElevenLabs) e apresenta slides narrados com legendas sincronizadas e gráficos em SVG. Roda só no seu computador (localhost).

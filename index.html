@@ -521,7 +521,7 @@ figcaption .ctype{margin-left:auto;font:400 13px var(--mono);color:var(--mute);l
     <label class="fld">Cidade<input id="cityQ" autocomplete="off" placeholder="Comece a digitar, ex.: Jundiaí" aria-describedby="cityPick" aria-controls="cityL"></label>
     <ul id="cityL" aria-label="Cidades encontradas"></ul>
     <p class="hint" id="cityPick" aria-live="polite"></p>
-    <label class="fld">Idioma<select name="lang" id="pfLang"><option value="pt-BR">Português (Brasil)</option><option value="en-US">English (US)</option><option value="es-ES">Español</option></select></label>
+    <div class="fld"><span id="pfLangL">Idioma</span><div id="pfLangOpts" role="radiogroup" aria-labelledby="pfLangL"></div><select name="lang" id="pfLang" hidden><option value="pt-BR">Português (Brasil)</option><option value="en-US">English (US)</option><option value="es-ES">Español</option></select></div>
     <p class="err" id="pfErr" role="alert"></p>
     <div class="ctas"><button class="btn pri" type="submit">Salvar perfil</button><button class="btn ghost" type="button" id="pfCancel" hidden>Cancelar</button></div>
   </form>
@@ -1098,7 +1098,7 @@ async function req(method,u,b){
   try{r=await fetch(u,{method,headers:method==='GET'?{}:{'content-type':'application/json','x-jarvis':'1'},body:method==='GET'||b===undefined?undefined:JSON.stringify(b)})}
   catch{throw Object.assign(new Error(`Sem conexão com o servidor do ${NAME}. Ele está rodando?`),{status:0})}
   let j=null;try{j=await r.json()}catch{}
-  if(r.status===401&&j?.login){location.href='/login';throw Object.assign(new Error('Entre com a senha.'),{status:401})}
+  if(r.status===401&&j?.login){location.href='/login';throw Object.assign(new Error('Entre com o GitHub.'),{status:401})}
   if(!r.ok)throw Object.assign(new Error(j?.error||`Erro ${r.status}.`),{status:r.status});
   return j;
 }
@@ -1297,7 +1297,7 @@ function openProfile(edit){
   $('#pfK').textContent=edit?'Editar perfil':'Primeiro acesso';
   $('#pfT').textContent=edit?'Seus dados':'Muito prazer. Vamos nos apresentar?';
   $('#pfCancel').hidden=!edit;
-  $('#pfName').value=p?.name||'';$('#pfLang').value=p?.lang||'pt-BR';
+  $('#pfName').value=p?.name||'';$('#pfLang').value=p?.lang||'pt-BR';if(window.syncLang)syncLang();
   f.querySelectorAll('[name=address]').forEach(r=>r.checked=r.value===(p?.address||''));
   $('#cityQ').value='';$('#cityL').replaceChildren();
   $('#cityPick').innerHTML=p?.city?`Cidade atual: <b>${esc(p.city.name)}${p.city.admin1?', '+esc(p.city.admin1):''}${p.city.country?', '+esc(p.city.country):''}</b>. Digite outra para trocar.`:'';
@@ -1892,7 +1892,8 @@ renderInteg=function(){_ri();const host=$('#accRows');if(!host||!S.integ)return;
   cx.innerHTML=
    card1({ic:'mail',nm:'Gmail',on:gOn,by:'Google',ds:gOn?(g.trash?'Lê e move para a lixeira sob pedido':'Só leitura. Reautorize para liberar a lixeira')+(g.trash&&!g.calendarWrite?' · Reautorize para marcar compromissos':'')+(g.email?' · '+esc(g.email):''):g.state==='error'?'Erro: '+esc(g.message):(g.configured?'Resume e prioriza seus e-mails':esc(g.message)),extra:gOn?tgl('gmail_trash','Lixeira sob pedido'):'',btn:gOn?okb('gx','Desconectar'):plus('/auth/google',!g.configured)})+
    card1({ic:'cal',nm:'Google Calendar',on:cOn,by:'Google',ds:cOn?'Lê sua agenda (somente leitura)':gOn?'Reautorize o Google para liberar a agenda':'Compromissos, próximo evento e horários livres',btn:cOn?okb('gx','Desconectar'):plus('/auth/google',!g.configured)})+
-   ghCard('github_read','GitHub (leitura)','PRs para revisar, CI e issues. Token de escopo fino, só leitura','git')+
+   (card1({ic:'git',nm:'Entrar com GitHub',on:!!I.ghlogin,by:'GitHub',ds:I.ghlogin?('@'+esc(I.ghlogin.login)+(I.ghlogin.token?' · leitura pelo login':'')):(I.ghloginAvailable?'Sem criar token: autorize e pronto':'Defina GITHUB_CLIENT_ID no servidor'),btn:I.ghlogin?okb('glo',I.hosted?'Sair':'Desconectar'):plus('/auth/github',!I.ghloginAvailable)}))+
+   ghCard('github_read','GitHub (token)','Avançado: cole um token de escopo fino (só leitura) em vez de entrar com GitHub','git')+
    ghCard('github_write','GitHub (escrita)','Branch e pull request só sob pedido. Token separado','gitw',(I.keys.github_write||{}).state==='on'?tgl('github_write','Escrita sob pedido'):'')+
    card1({ic:'eye',nm:'Visão da tela',on:!!window.__screenOn,by:'seu navegador',ds:window.__screenOn?'Compartilhando. Só olho quando o senhor pedir; nada é gravado':'Compartilhe uma tela ou janela e peça: "olha minha tela"',btn:window.__screenOn?okb('sc','Parar de compartilhar'):'<button class="go" type="button" data-x="sc" aria-label="Compartilhar tela">+</button>'})+
    card1({ic:'pen',nm:'Canva',on:c.state==='on',by:'Canva',ds:c.state==='soon'?'Em breve':esc(c.message||''),btn:c.state==='on'?'<span class="go ok" aria-hidden="true">✓</span>':plus('#',true)})};
@@ -1903,6 +1904,7 @@ document.addEventListener('click',async e=>{const b=e.target.closest&&e.target.c
    if(x==='go'){ghOpen=ghOpen===p?null:p;renderInteg();const i=document.querySelector('form.gk[data-p="'+p+'"] input');if(i)i.focus()}
    if(x==='gt'){S.integ.keys[p]=await req('POST','/api/keys/'+p+'/test',{});renderInteg()}
    if(x==='gd'){S.integ.keys[p]=await req('DELETE','/api/keys/'+p);ghOpen=null;renderInteg()}
+   if(x==='glo'){await req('POST','/api/logout',{});location.href=(S.integ&&S.integ.hosted)?'/login':'/';return}
    if(x==='gx'){S.integ=await api('/auth/google/disconnect');renderInteg();closeMail&&closeMail();flash('Google desconectado.')}
   }catch(er){flash(er.message||'Algo deu errado.')}});
 // Respostas de voz do /api/chat que mexem na interface (cartão de ação, lixeira, desfazer)
@@ -1947,6 +1949,35 @@ async function showGit(){
 .cg .go:hover{border-color:var(--mute)} .cg .go.ok{color:#6fd08c;border-color:#2b4a35;background:#132019;font-size:15px} .cg .go[aria-disabled=true]{opacity:.4;cursor:not-allowed}
 @media (prefers-reduced-motion:reduce){.cn{transition:none}}
 </style>
+<style id="form-css">
+/* Formulário de perfil: campos mais claros, lista de cidades como menu, idioma em botões */
+#pf .fld input{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:500 15px 'Montserrat',sans-serif;color:var(--text);transition:border-color .2s,box-shadow .2s}
+#pf .fld input::placeholder{color:var(--mute);opacity:.8}
+#pf .fld input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in oklab,var(--acc) 22%,transparent)}
+#cityL{max-height:224px;overflow:auto;padding:4px;border:1px solid var(--line);border-radius:14px;background:var(--bg2);box-shadow:0 14px 34px rgba(0,0,0,.35)}
+#cityL:empty{display:none}
+#cityL button{display:flex;gap:10px;align-items:center;justify-content:space-between;border:0;background:transparent;border-radius:10px;padding:11px 12px;cursor:pointer}
+#cityL button::before{content:'';width:8px;height:8px;border-radius:50%;border:1.5px solid var(--mute);flex:none}
+#cityL button>*:first-child{margin-right:auto}
+#cityL button:hover,#cityL button:focus-visible{background:color-mix(in oklab,var(--acc) 12%,transparent);outline:none}
+#cityL button:focus-visible::before{background:var(--acc);border-color:var(--acc)}
+#pfLangOpts{display:flex;gap:8px;flex-wrap:wrap}
+#pfLangOpts button{padding:8px 16px;border:1px solid var(--line);border-radius:99px;background:transparent;color:var(--text);font:500 14px 'Montserrat',sans-serif;cursor:pointer;transition:all .2s}
+#pfLangOpts button:hover{border-color:var(--mute)}
+#pfLangOpts button[aria-checked=true]{background:var(--acc);border-color:var(--acc);color:#16120a;font-weight:700}
+#pfLangOpts button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+#pf .ctas{margin-top:6px}
+@media (prefers-reduced-motion:reduce){#pf .fld input,#pfLangOpts button{transition:none}}
+</style>
+<script id="form-js">
+/* Idioma em botões (o <select> escondido continua sendo a fonte do valor) */
+(()=>{const sel=document.getElementById('pfLang'),box=document.getElementById('pfLangOpts');if(!sel||!box)return;
+ [...sel.options].forEach(o=>{const b=document.createElement('button');b.type='button';b.setAttribute('role','radio');b.dataset.v=o.value;b.textContent=o.textContent;box.appendChild(b)});
+ window.syncLang=()=>[...box.children].forEach(b=>{const on=b.dataset.v===sel.value;b.setAttribute('aria-checked',on);b.tabIndex=on?0:-1});
+ box.addEventListener('click',e=>{const b=e.target.closest('button');if(b){sel.value=b.dataset.v;syncLang()}});
+ box.addEventListener('keydown',e=>{const bs=[...box.children],i=bs.indexOf(document.activeElement);if(i<0)return;const n=e.key==='ArrowRight'||e.key==='ArrowDown'?(i+1)%bs.length:e.key==='ArrowLeft'||e.key==='ArrowUp'?(i-1+bs.length)%bs.length:-1;if(n>=0){e.preventDefault();bs[n].focus();sel.value=bs[n].dataset.v;syncLang()}});
+ syncLang()})();
+</script>
 <style>
 #scPill{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;transform:translateX(-50%);z-index:70;display:none;align-items:center;gap:8px;background:var(--bg2);border:1px solid #6fd08c;color:var(--text);border-radius:99px;padding:6px 8px 6px 12px;font:600 12px 'Montserrat',sans-serif}
 #scPill.on{display:flex} #scPill i{width:8px;height:8px;border-radius:50%;background:#6fd08c;animation:scp 1.6s ease-in-out infinite}
