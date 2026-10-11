@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0c0f">
+<title>JARVIS · Seu mordomo digital, por voz</title>
+<meta name="description" content="Assistente pessoal por voz, em português, que conversa, organiza seu dia e mexe no PC por você. Use no navegador ou baixe o app para Windows.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fragment+Mono&family=Montserrat:wght@400;500;600;700;800;900&family=Vollkorn:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/site.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/></symbol>
+  <symbol id="i-win" viewBox="0 0 24 24"><path d="M3 5.5l7.5-1v7H3zM12 4.3L21 3v8.5h-9zM3 12.5h7.5v7L3 18.5zM12 12.5h9V21l-9-1.3z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.2-7.5 9.5-4.3-1.3-7.5-4.9-7.5-9.5V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="i-pc" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5V4a1.5 1.5 0 0 1 3 0v6m0-4.5a1.5 1.5 0 0 1 3 0V12m0-3.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a6 6 0 0 1-4.8-2.4L4.6 14.2a1.5 1.5 0 0 1 2.3-1.9L8 13.5"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 7l8.5 6 8.5-6"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+</svg>
+
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="JARVIS, início"><i></i><span>J<b>A</b>RVIS</span></a>
+    <nav aria-label="Seções">
+      <a href="#recursos">Recursos</a><a href="#jarvis-code">Jarvis Code</a><a href="#web-ou-app">Web ou app</a><a href="#privacidade">Privacidade</a>
+    </nav>
+    <div class="acts">
+      <a class="btn sm ghost" href="/entrar" id="navLogin">Entrar</a>
+      <a class="btn sm pri" href="/baixar"><svg class="i"><use href="#i-win"/></svg>Baixar</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="hero" aria-labelledby="h1">
+    <div class="stage" id="stage"></div>
+    <div class="copy">
+      <span class="eyebrow"><i></i>Assistente por voz · em português</span>
+      <h1 id="h1">Seu mordomo digital, <em>por voz.</em></h1>
+      <p class="lead">O JARVIS conversa, apresenta slides narrados, organiza seu dia e, no app para Windows, assume o mouse e faz as tarefas no PC por você.</p>
+      <div class="ctas">
+        <a class="btn pri" href="/baixar"><svg class="i"><use href="#i-win"/></svg>Baixar para Windows</a>
+        <a class="btn" href="/app"><svg class="i"><use href="#i-globe"/></svg>Usar no navegador</a>
+      </div>
+      <p class="caption" id="cap" aria-live="off"><span id="capText"></span><span class="cur" aria-hidden="true"></span></p>
+    </div>
+    <a class="scrollhint" href="#recursos" aria-label="Ver recursos"><span></span>Role</a>
+  </section>
+
+  <div class="strip">
+    <div class="wrap">
+      <div><b>pt-BR <em>nativo</em></b><span>Fala, entende e responde em português</span></div>
+      <div><b>Gemini <em>ou</em> Claude</b><span>Com plano B se um cair</span></div>
+      <div><b>Voz <em>neural</em></b><span>Grátis e sem limite, já configurada</span></div>
+      <div><b>100% <em>local</em></b><span>Roda no seu PC; dados ficam com você</span></div>
+    </div>
+  </div>
+
+  <section class="s" id="recursos">
+    <div class="wrap">
+      <div class="center rv">
+        <span class="kicker">O que ele faz</span>
+        <h2>Menos cliques. <em>Mais "feito, senhor".</em></h2>
+        <p class="sub">Um assistente com personalidade (e um sarcasmo seco, à moda da casa) que trabalha de verdade: na conversa, no seu dia e no seu computador.</p>
+      </div>
+
+      <article class="feat">
+        <div class="txt rv">
+          <span class="tag web"><svg class="i"><use href="#i-globe"/></svg>Navegador e app</span>
+          <h3>Pergunte qualquer coisa. Ele responde com slides narrados.</h3>
+          <p>Fale com o JARVIS como falaria com um mordomo. Ele responde com voz natural, legendas sincronizadas palavra por palavra e gráficos montados na hora.</p>
+          <ul>
+            <li><svg class="i"><use href="#i-check"/></svg>Toque no orbe ou use um atalho e fale</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Gráficos em SVG e slides que se apresentam sozinhos</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Lembra do contexto da conversa</li>
+          </ul>
+        </div>
+        <div class="shot rv" data-tilt>
+          <div class="frame">
+            <div class="bar"><i></i><i></i><i></i><span>jarvis · conversa</span></div>
+            <div class="body">
+              <div class="slide">
+                <small>Slide 2 de 4</small>
+                <h4>Seus gastos com streaming em 2026</h4>
+                <div class="bars">
+                  <div style="--h:42%" data-v="R$ 45"></div><div style="--h:68%;--c:var(--teal)" data-v="R$ 72"></div><div style="--h:88%;--c:var(--coral)" data-v="R$ 94"></div><div style="--h:30%;--c:var(--sky)" data-v="R$ 32"></div><div style="--h:55%;--c:var(--lav)" data-v="R$ 59"></div>
+                </div>
+                <div class="bars-l"><span>jan</span><span>fev</span><span>mar</span><span>abr</span><span>mai</span></div>
+              </div>
+              <p class="subs">"Março foi o mês das <b>maratonas</b>, senhor. Recomendo moderação."</p>
+              <div class="orbmini" aria-hidden="true"></div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="feat">
+        <div class="txt rv">
+          <span class="tag web"><svg class="i"><use href="#i-globe"/></svg>Navegador e app</span>
+          <h3>Bom dia com clima, agenda e e-mails, já resumidos.</h3>
+          <p>Ao abrir, o JARVIS lê seu dia: o tempo na sua cidade, os compromissos da Google Agenda e os e-mails que importam. E avisa quando um deles cheira a golpe.</p>
+          <ul>
+            <li><svg class="i"><use href="#i-check"/></svg>Gmail com triagem e alerta de phishing (SPF, DKIM, DMARC)</li>
+            <li><svg class="i"><use href="#i-check"/></svg>"Marca dentista amanhã às 15h": sempre pede confirmação</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Notícias e resumo do GitHub, se você quiser</li>
+          </ul>
+        </div>
+        <div class="shot rv" data-tilt style="--glow:var(--teal)">
+          <div class="frame">
+            <div class="bar"><i></i><i></i><i></i><span>jarvis · bom dia</span></div>
+            <div class="body">
+              <div class="cards">
+                <div class="card"><h5><svg class="i"><use href="#i-sun"/></svg>Jundiaí</h5><div class="wx"><div class="sun"></div><div><b>24°</b><small>Sol entre nuvens · máx. 27°</small></div></div></div>
+                <div class="card"><h5><svg class="i"><use href="#i-cal"/></svg>Hoje</h5>
+                  <div class="ag"><div><time>09:30</time>Daily do time</div><div class="now"><time>14:00</time>Entrega do site</div><div><time>19:00</time>Academia</div></div></div>
+                <div class="card mail"><h5><svg class="i"><use href="#i-mail"/></svg>3 e-mails que importam</h5>
+                  <div><span class="av" style="background:var(--sky)">N</span>Nubank · Fatura fechou<span class="imp">Importante</span></div>
+                  <div><span class="av" style="background:var(--coral)">S</span>"Stripe" · Confirme seu cartão<span class="sus">Suspeito</span></div>
+                  <div><span class="av" style="background:var(--ok)">G</span>GitHub · PR aprovado</div>
+                </div>
+              </div>
+              <div class="float" style="left:14px;bottom:-14px;font-size:13px;max-width:240px">"Esse da Stripe não é da Stripe, senhor. Eu não clicaria."</div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="feat">
+        <div class="txt rv">
+          <span class="tag web"><svg class="i"><use href="#i-globe"/></svg>Navegador e app</span>
+          <h3>"Pesquisa imagens de..." e a galeria aparece no palco.</h3>
+          <p>Busca no Google (ou em bancos abertos, sem chave), mostra uma galeria para ampliar e baixar, e exporta as escolhidas num ZIP com os créditos de cada imagem.</p>
+          <ul>
+            <li><svg class="i"><use href="#i-check"/></svg>ZIP com CREDITOS.txt: fonte, autor e licença</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Download seguro, feito pelo servidor</li>
+          </ul>
+        </div>
+        <div class="shot rv" data-tilt style="--glow:var(--lav)">
+          <div class="frame">
+            <div class="bar"><i></i><i></i><i></i><span>jarvis · imagens de "aurora boreal"</span></div>
+            <div class="body">
+              <div class="gal">
+                <div class="sel" style="--g:linear-gradient(170deg,#0c1a3a,#1b5e5a 45%,#7cf2c0 70%,#0b1020)"></div>
+                <div style="--g:linear-gradient(200deg,#130b2e,#5a2f8f 50%,#e07be0)"></div>
+                <div class="sel" style="--g:linear-gradient(160deg,#04121f,#0e5d73 55%,#9df5d8)"></div>
+                <div style="--g:linear-gradient(190deg,#1a0f2a,#2a6d7c 45%,#c8ffb0 80%)"></div>
+                <div style="--g:linear-gradient(180deg,#071426,#123e6b 50%,#59d3a6 85%)"></div>
+                <div class="sel" style="--g:linear-gradient(175deg,#08101f,#3b2a7a 40%,#4fe0b5 70%,#081018)"></div>
+                <div style="--g:linear-gradient(210deg,#0a0f1d,#1d7a6b 60%,#f6e27a)"></div>
+                <div style="--g:linear-gradient(165deg,#120a22,#6b2f7f 45%,#6ee0d0)"></div>
+              </div>
+              <div class="zipbar"><span>3 escolhidas</span><span class="btn sm pri" aria-hidden="true">Exportar ZIP</span></div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="s" id="jarvis-code" style="padding-top:0">
+    <div class="wrap">
+      <div class="center rv">
+        <span class="kicker" style="color:var(--code)">Só no app para Windows</span>
+        <h2>Conheça o <em>Jarvis Code.</em></h2>
+        <p class="sub">Um ajudante em pixel art que mora na sua área de trabalho. Você pede, o JARVIS raciocina passo a passo olhando a tela, e ele anda até o app, pula na janela, clica, digita e confere até terminar.</p>
+      </div>
+
+      <!-- Palco: o próprio Jarvis Code, grande, mostrando cada um dos seus modos (os mesmos quadros do app) -->
+      <div class="jcstage rv" id="jcStage">
+        <div class="floor" aria-hidden="true">
+          <div class="spot"></div>
+          <div class="actor" id="stageActor"><span class="say" id="stageSay"></span><img alt="" src="/jc/walk_01.png"></div>
+          <div class="shadow" id="stageShadow"></div>
+        </div>
+        <div class="modes" role="tablist" aria-label="Modos do Jarvis Code">
+          <button type="button" role="tab" data-m="walk"><b>Andando</b><span>Vai até o app que você pediu, em qualquer monitor.</span></button>
+          <button type="button" role="tab" data-m="jump"><b>Pulando</b><span>Sobe na barra de título da janela e chega perto do clique.</span></button>
+          <button type="button" role="tab" data-m="think"><b>Pensando</b><span>Olha a tela, confere o passo anterior e decide o próximo.</span></button>
+          <button type="button" role="tab" data-m="notebook"><b>No notebook</b><span>Digita o seu código no VS Code, letra por letra.</span></button>
+        </div>
+      </div>
+
+      <article class="feat">
+        <div class="txt rv">
+          <span class="tag app"><svg class="i"><use href="#i-lock"/></svg>Só no app</span>
+          <h3>"Abre o Discord e entra na call do servidor."</h3>
+          <p>Tarefas de vários passos em qualquer programa: o Jarvis Code abre o app (até no segundo monitor), navega, busca e clica, conferindo cada passo pela tela.</p>
+          <ul>
+            <li><svg class="i"><use href="#i-check"/></svg>"Olha minha tela e resolve esse problema"</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Lembra do que fez: "continua" retoma de onde parou</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Arraste o Jarvis Code e a tarefa para na hora</li>
+          </ul>
+        </div>
+        <div class="shot rv" data-tilt style="--glow:var(--code)">
+          <div class="perch" data-script="discord" aria-hidden="true"><span class="say"></span><img alt="" src="/jc/walk_01.png"></div>
+          <div class="frame">
+            <div class="bar"><i></i><i></i><i></i><span>área de trabalho · monitor 2</span></div>
+            <div class="body" style="padding:12px">
+              <div class="desk">
+                <div class="win dc">
+                  <div class="tb">Discord</div>
+                  <div class="sv"><i style="--c:#5865f2"></i><i style="--c:var(--acc)"></i><i style="--c:var(--teal)"></i><i style="--c:var(--coral)"></i></div>
+                  <div class="ch"><b>SEI LÁ</b><span># geral</span><span># memes</span><b>VOZ</b><span class="vc">Geral</span><span class="live">você</span></div>
+                  <div class="ct"><span style="width:80%"></span><span style="width:60%"></span><span style="width:72%"></span><span style="width:40%"></span></div>
+                </div>
+                <div class="click" aria-hidden="true"></div>
+                <svg class="cursor" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 2l15 10-7 1.3L9 21z" fill="#fff" stroke="#000" stroke-width="1.2"/></svg>
+                <div class="steps" aria-hidden="true">
+                  <div><b>1</b>abrir Discord</div><div><b>2</b>ctrl+k</div><div><b>3</b>digitar "Sei lá"</div><div><b>4</b>clicar em 🔊 Geral</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="feat">
+        <div class="txt rv">
+          <span class="tag app"><svg class="i"><use href="#i-lock"/></svg>Só no app</span>
+          <h3>"Abre a Steam e inicia o Geometry Dash."</h3>
+          <p>Jogos da sua biblioteca abrem direto, sem procurar ícone. E se pedir "vai na biblioteca e escolhe um jogo", ele navega e escolhe por você.</p>
+          <ul>
+            <li><svg class="i"><use href="#i-check"/></svg>Iniciar e instalar jogos da sua biblioteca</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Qualquer app do menu Iniciar, só pelo nome</li>
+          </ul>
+        </div>
+        <div class="shot rv" data-tilt style="--glow:#66c0f4">
+          <div class="perch" data-script="steam" aria-hidden="true"><span class="say"></span><img alt="" src="/jc/walk_01.png"></div>
+          <div class="frame">
+            <div class="bar"><i></i><i></i><i></i><span>Steam · Biblioteca</span></div>
+            <div class="body" style="padding:12px">
+              <div class="stm">
+                <div class="lib">
+                  <b>JOGOS (6)</b>
+                  <span>Celeste</span><span>Hades</span><span class="on">Geometry Dash</span><span>Hollow Knight</span><span>Stardew Valley</span><span>Terraria</span>
+                </div>
+                <div class="game">
+                  <div class="art"><i></i><i></i><i></i><em>GEOMETRY DASH</em></div>
+                  <div class="row2"><span class="play">▶ JOGAR</span><span class="meta2">Jogado por último: ontem<br>48 horas registradas</span></div>
+                  <div class="launch" aria-hidden="true">Iniciando Geometry Dash…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="feat">
+        <div class="txt rv">
+          <span class="tag app"><svg class="i"><use href="#i-lock"/></svg>Só no app</span>
+          <h3>Escreve e refina código direto no VS Code.</h3>
+          <p>"Cria um site da padaria." O VS Code abre, o Jarvis Code pega o notebook e o código vai aparecendo, digitado. Depois: "refina o código da padaria". Ele edita o mesmo arquivo e guarda a versão anterior.</p>
+          <ul>
+            <li><svg class="i"><use href="#i-check"/></svg>HTML, CSS, JS, Python e mais 20 linguagens</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Backup automático de cada versão</li>
+          </ul>
+        </div>
+        <div class="shot rv" data-tilt style="--glow:var(--code)">
+          <div class="perch" data-script="vscode" aria-hidden="true"><span class="say"></span><img alt="" src="/jc/walk_01.png"></div>
+          <div class="frame">
+            <div class="bar"><i></i><i></i><i></i><span>padaria.html · Visual Studio Code</span></div>
+            <div class="body" style="padding:14px">
+              <div class="ed">
+                <div class="tabs"><span class="on">padaria.html</span><span>.versoes</span></div>
+<pre><span class="l"><span class="tg">&lt;section</span> <span class="at">class</span>=<span class="s1">"cardapio"</span><span class="tg">&gt;</span></span><span class="l">  <span class="tg">&lt;h2&gt;</span>Fornadas de hoje<span class="tg">&lt;/h2&gt;</span></span><span class="l add">  <span class="cm">&lt;!-- refinado: grade responsiva --&gt;</span></span><span class="l add">  <span class="tg">&lt;div</span> <span class="at">class</span>=<span class="s1">"grade"</span><span class="tg">&gt;</span></span><span class="l add">    <span class="tg">&lt;article</span> <span class="at">class</span>=<span class="s1">"item destaque"</span><span class="tg">&gt;</span></span><span class="l">      <span class="tg">&lt;h3&gt;</span>Pão de fermentação natural<span class="tg">&lt;/h3&gt;</span></span><span class="l">      <span class="tg">&lt;p</span> <span class="at">class</span>=<span class="s1">"preco"</span><span class="tg">&gt;</span>R$ 18,90<span class="tg">&lt;/p&gt;</span></span><span class="l add">    <span class="tg">&lt;/article&gt;</span></span><span class="l">  <span class="tg">&lt;/div&gt;</span></span><span class="l"><span class="tg">&lt;/section&gt;</span></span></pre>
+              </div>
+              <div class="float" style="right:-12px;bottom:-6px;font-size:13px;max-width:250px">Refinei padaria.html. A versão anterior ficou em <span class="mono" style="color:var(--code)">.versoes</span>.</div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="s" id="web-ou-app" style="padding-top:0">
+    <div class="wrap">
+      <div class="center rv">
+        <span class="kicker">Web ou app</span>
+        <h2>Comece no navegador. <em>Vá além no app.</em></h2>
+        <p class="sub">A versão web funciona no Chrome ou no Edge. O que mexe no seu computador fica com cadeado até você instalar o app para Windows.</p>
+      </div>
+      <div class="cmp">
+        <div class="plan rv">
+          <span class="tag web"><svg class="i"><use href="#i-globe"/></svg>Navegador</span>
+          <h3>JARVIS Web</h3>
+          <p>Abra e converse. Nada para instalar.</p>
+          <ul>
+            <li class="y"><svg class="i"><use href="#i-check"/></svg>Conversa por voz com slides narrados</li>
+            <li class="y"><svg class="i"><use href="#i-check"/></svg>Clima, agenda e Gmail com alerta de golpe</li>
+            <li class="y"><svg class="i"><use href="#i-check"/></svg>Busca e exportação de imagens</li>
+            <li class="y"><svg class="i"><use href="#i-check"/></svg>Ler a tela compartilhada</li>
+            <li class="n"><svg class="i"><use href="#i-lock"/></svg>Modo Code e Jarvis Code<span class="tag app">App</span></li>
+            <li class="n"><svg class="i"><use href="#i-lock"/></svg>Clicar e digitar nos programas<span class="tag app">App</span></li>
+            <li class="n"><svg class="i"><use href="#i-lock"/></svg>Janela flutuante e atalho global<span class="tag app">App</span></li>
+          </ul>
+          <a class="btn" href="/app"><svg class="i"><use href="#i-globe"/></svg>Usar no navegador</a>
+        </div>
+        <div class="plan app rv">
+          <span class="tag" style="color:var(--acc2);border-color:color-mix(in oklab,var(--acc) 45%,transparent)"><svg class="i"><use href="#i-win"/></svg>Windows 10 e 11</span>
+          <h3>JARVIS para Windows</h3>
+          <p>Tudo da versão web, mais o Jarvis Code na sua tela.</p>
+          <ul>
+            <li class="y"><svg class="i"><use href="#i-check"/></svg>Tudo da versão web</li>
+            <li class="y"><svg class="i"><use href="#i-check"/></svg>Modo Code: tarefas de vários passos no PC</li>
+            <li class="y"><svg class="i"><use href="#i-check"/></svg>Abre apps e jogos da Steam por voz</li>
+            <li class="y"><svg class="i"><use href="#i-check"/></svg>Escreve e refina código no VS Code</li>
+            <li class="y"><svg class="i"><use href="#i-check"/></svg>Janela flutuante com atalho de teclado</li>
+            <li class="y"><svg class="i"><use href="#i-check"/></svg>Funciona em dois ou três monitores</li>
+          </ul>
+          <a class="btn pri" href="/baixar"><svg class="i"><use href="#i-win"/></svg>Baixar para Windows</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="s" id="privacidade" style="padding-top:0">
+    <div class="wrap">
+      <div class="center rv">
+        <span class="kicker">Privacidade</span>
+        <h2>Poderoso, <em>mas educado.</em></h2>
+      </div>
+      <div class="trust">
+        <div class="rv"><span class="ic"><svg class="i"><use href="#i-pc"/></svg></span><b>Roda no seu computador</b><p>O servidor é local. Chaves e memória ficam numa pasta sua, fora de qualquer nuvem nossa.</p></div>
+        <div class="rv"><span class="ic"><svg class="i"><use href="#i-hand"/></svg></span><b>Pede antes de agir</b><p>Marcar compromisso e mover e-mails para a lixeira só com a sua confirmação. Dá para desfazer.</p></div>
+        <div class="rv"><span class="ic"><svg class="i"><use href="#i-shield"/></svg></span><b>Sabe onde não mexer</b><p>Não compra, não envia mensagens, não faz login e não digita senhas. Janelas de segurança do Windows ficam fora de alcance.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="s" style="padding-top:0">
+    <div class="wrap">
+      <div class="final rv">
+        <div class="ring3d" aria-hidden="true"></div>
+        <span class="kicker">Às suas ordens</span>
+        <h2>Pronto para delegar, <em>senhor?</em></h2>
+        <p class="sub" style="margin:0 auto">Crie sua conta, baixe o app e deixe o trabalho braçal com o Jarvis Code.</p>
+        <div class="ctas">
+          <a class="btn pri" href="/baixar"><svg class="i"><use href="#i-win"/></svg>Baixar para Windows</a>
+          <a class="btn" href="/app">Experimentar no navegador</a>
+        </div>
+        <small>Grátis · Windows 10/11 · precisa do Node.js 20.6+</small>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>J<b style="color:var(--acc);font-weight:400">A</b>RVIS · seu mordomo digital</span>
+    <span style="display:flex;gap:18px"><a href="/guia">Guia de configuração</a><a href="/entrar">Entrar</a><a href="/baixar">Baixar</a></span>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
+<script src="/site3d.js" defer></script>
+<script src="/site-jc.js" defer></script>
+<script>
+// Cena 3D do hero (o núcleo no centro, atrás do texto). Sem three.js: o orbe estático do CSS.
+addEventListener('DOMContentLoaded', () => {
+  const stage = document.getElementById('stage');
+  try { window.JarvisScene ? JarvisScene(stage, { particles: innerWidth < 700 ? 700 : 1500 }) : stage.classList.add('no3d'); } catch { stage.classList.add('no3d'); }
+});
+
+// Topo ganha fundo ao rolar.
+const nav = document.getElementById('nav');
+const onScroll = () => nav.classList.toggle('sc', scrollY > 30);
+addEventListener('scroll', onScroll, { passive: true }); onScroll();
+
+// Já logado: "Entrar" vira "Minha conta".
+fetch('/api/auth/me').then(r => r.json()).then(j => { if (j.user) { const a = document.getElementById('navLogin'); a.textContent = 'Minha conta'; a.href = '/baixar'; } }).catch(() => {});
+
+// Legenda no centro do hero, digitada como as respostas do app.
+const LINES = ['"Bom dia, senhor. 24 graus e três e-mails que merecem atenção."', '"Abrindo o Discord no segundo monitor. Ele adora se sentir útil."', '"Refinei o site da padaria. Código impecável, se me permite."', '"Esse e-mail da Stripe não é da Stripe. Eu não clicaria."'];
+const capEl = document.getElementById('capText'), RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+(async () => {
+  if (RM) { capEl.textContent = LINES[0]; return; }
+  for (let k = 0; ; k = (k + 1) % LINES.length) {
+    const s = LINES[k];
+    for (let i = 1; i <= s.length; i++) { capEl.textContent = s.slice(0, i); await new Promise(r => setTimeout(r, 32)); }
+    await new Promise(r => setTimeout(r, 2600));
+    for (let i = s.length; i >= 0; i -= 3) { capEl.textContent = s.slice(0, i); await new Promise(r => setTimeout(r, 12)); }
+    await new Promise(r => setTimeout(r, 300));
+  }
+})();
+
+// Aparecer ao rolar.
+const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: .15 });
+document.querySelectorAll('.rv').forEach(el => io.observe(el));
+
+// "Telas" inclinam em 3D seguindo o mouse.
+if (!RM) document.querySelectorAll('[data-tilt]').forEach(el => {
+  const f = el.querySelector('.frame'), base = getComputedStyle(f).getPropertyValue('--ry').trim() || '-10deg';
+  el.addEventListener('pointermove', e => { const r = el.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+    f.style.setProperty('--ry', `${x * 16}deg`); f.style.setProperty('--rx', `${-y * 12}deg`); });
+  el.addEventListener('pointerleave', () => { f.style.removeProperty('--ry'); f.style.removeProperty('--rx'); });
+});
+
+</script>
+</body>
+</html>

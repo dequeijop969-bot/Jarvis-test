@@ -1,5 +1,3 @@
-> **Atualização:** o modo hospedado não usa mais senha (`JARVIS_PASSWORD` foi removida). Agora é **Entrar com GitHub**: defina `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `JARVIS_ALLOWED_GITHUB` (quem pode entrar) e `JARVIS_SESSION_SECRET`. Callback: `https://SEU-SITE/auth/github/callback`. Veja `.env.example`.
-
 # JARVIS
 
 Assistente de IA por voz, em português do Brasil, com alma de mordomo digital: você fala, ele pensa (Gemini ou Anthropic), responde com voz (ElevenLabs) e apresenta slides narrados com legendas sincronizadas e gráficos em SVG. Roda só no seu computador (localhost).
@@ -9,7 +7,7 @@ O nome vive em uma constante só: `ASSISTANT_NAME` em `lib/config.js`.
 ## Como rodar
 1. Instale o Node.js 20.6 ou mais novo.
 2. Copie `.env.example` para `.env` (pode ficar quase vazio: as chaves também podem ser salvas pela interface).
-3. `npm start` e abra **http://localhost:3000** no **Chrome ou Edge**.
+3. `npm start` e abra **http://localhost:3000** no **Chrome ou Edge**. A página inicial é um guia de primeiros passos que confere sua configuração ao vivo; o assistente fica em **/app**.
 4. Preencha o perfil (nome, tratamento, cidade, idioma), conecte o Gmail se quiser, toque em **Iniciar**.
 
 Sem nenhuma chave? `npm run demo` sobe tudo com serviços simulados (IA, voz muda, Gmail falso com um e-mail suspeito, clima).
@@ -18,6 +16,9 @@ Sem nenhuma chave? `npm run demo` sobe tudo com serviços simulados (IA, voz mud
 - Na demo, fale algo com "falha" para derrubar o Gemini só naquele pedido.
 
 `npm run check`: sintaxe + testes unitários + teste de aceitação completo (sem internet).
+
+## Voz
+Sem configurar nada, o JARVIS fala com a **voz neural gratuita da Microsoft** (Antonio, pt-BR): natural, sem chave e sem limite. Em **Integrações → Voz** você escolhe o provedor (Automático, Microsoft, ElevenLabs ou voz do navegador), a voz e a velocidade, e ouve uma amostra. No modo Automático, a ElevenLabs é usada quando configurada, e a Microsoft assume se acabarem os créditos. É um serviço não oficial; se sair do ar, ele usa a ElevenLabs ou a voz do navegador.
 
 ## Onde pegar as chaves
 - **Gemini**: aistudio.google.com, em "Get API key".
@@ -40,6 +41,12 @@ Salve em **Integrações** (barra no topo) e use **Testar**. Elas ficam em `data
 
 O JARVIS lê apenas remetente, assunto, data, trecho e cabeçalhos de autenticação (SPF/DKIM/DMARC). O corpo só é lido quando você pede "abrir esse", e nunca é guardado. Nada é enviado, apagado, arquivado ou alterado.
 
+## Imagens (busca e exportação)
+Diga "pesquisa imagens de X" ou "me mostra fotos do X", ou use o botão **Imagens** na barra. A galeria aparece no palco: toque para ampliar, baixe uma por uma ou exporte as escolhidas num **ZIP** (com `CREDITOS.txt`: título, fonte, autor e licença de cada imagem).
+- **Google**: crie um mecanismo em programmablesearchengine.google.com ("Pesquisar em toda a Web" + "Pesquisa de imagens"), ative a **Custom Search API** no Google Cloud e coloque no `.env`: `GOOGLE_CSE_KEY=...` e `GOOGLE_CSE_ID=...`. A API tem cota (100 buscas grátis/dia) e o Google pode não aceitar projetos novos nela.
+- **Sem chave** (ou cota esgotada): o JARVIS usa o **Openverse** automaticamente (imagens abertas, sem chave).
+- Segurança: o navegador nunca recebe a URL externa; ele pede por um ID e o servidor só baixa o que ele mesmo devolveu numa busca recente (1 h), recusando endereços de rede privada, arquivos que não são imagem e acima de 15 MB.
+
 ## Canva
 A estrutura OAuth (Canva Connect, com PKCE) está pronta, mas aparece como **"em breve"**: nenhuma função usa o Canva ainda. Para testar o login, crie uma integração em canva.dev (exige MFA), use o redirect `http://127.0.0.1:3000/auth/canva/callback` (o Canva não aceita "localhost") e preencha `CANVA_CLIENT_ID`/`CANVA_CLIENT_SECRET`. Integrações privadas exigem plano Enterprise; confira os requisitos atuais.
 
@@ -56,7 +63,9 @@ A configuração é validada ao iniciar; níveis sem modelo aparecem como "sem m
 - E-mails: "próximo", "abrir esse", "ignorar", "ver os outros", "fechar tudo".
 - Agenda: "o que tenho hoje / amanhã / na semana", "quando estou livre"; para criar: "marca reunião com a Ana amanhã às 15h" (ele confirma antes: diga "confirmo" ou toque em Confirmar).
 - GitHub: "tenho pull request para revisar?", "ler meus repositórios", "fala do repositório jarvis-app", "últimos commits do jarvis-app".
+- Abrir: "abre o Chrome", "abre o YouTube", "abre uma guia do g1.com", "pesquisa no Google receita de bolo". Cadastre seus apps em Integrações → Abrir apps e sites por voz.
 - Tela: "olha minha tela"; os comentários seguintes continuam sobre ela. "Para de ver minha tela" encerra.
+- Imagens: "pesquisa imagens de estação espacial", "me mostra fotos de Saturno". Em apresentações sobre assuntos visuais ("me apresenta o Coliseu"), a IA coloca fotos nos slides sozinha.
 - Memória: "esqueça isso", "esqueça tudo", "o que você lembra de mim?".
 - Toque no círculo para interromper; Esc encerra.
 
@@ -66,13 +75,3 @@ A configuração é validada ao iniciar; níveis sem modelo aparecem como "sem m
 ## Várias contas da ElevenLabs (fallback)
 
 No `.env`, preencha `ELEVENLABS_API_KEY`, `ELEVENLABS_API_KEY_2`, `_3` e `_4`. A primeira é usada sempre; a próxima só entra quando a anterior falha (sem créditos, limite de uso, chave inválida ou instabilidade). O `ELEVENLABS_VOICE_ID` vale para todas; se a voz for diferente em alguma conta, use `ELEVENLABS_VOICE_ID_2`, `_3`, `_4`.
-
-## Hospedar na Vercel (modo hospedado)
-
-O JARVIS foi feito para rodar na sua máquina. Para hospedar, ele precisa de **senha** (sem ela o site recusa tudo) e de um endereço público. Limite importante: a Vercel não guarda arquivos (só `/tmp`, que some quando a função "dorme"). Chaves de API vindas das variáveis de ambiente funcionam sempre; **o login do Google (Gmail/Agenda) e as chaves salvas pela tela de Integrações podem se perder** e exigir reconectar. Para uso diário com Gmail, prefira rodar local ou uma hospedagem com disco (Render, Railway, Fly).
-
-1. Suba esta pasta inteira para o GitHub (com `api/` e `vercel.json`) e importe na Vercel. Framework: **Other**; sem comando de build.
-2. Variáveis de ambiente (Production): `JARVIS_PASSWORD` (obrigatória, use uma senha longa), `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY` (+ `_2`, `_3`, `_4`), `ELEVENLABS_VOICE_ID`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. Recomendado: `JARVIS_PUBLIC_URL=https://seu-projeto.vercel.app` e `JARVIS_PROFILE` (veja `.env.example`).
-3. Google Cloud > Credenciais > seu cliente OAuth: em "URIs de redirecionamento autorizados" adicione `https://seu-projeto.vercel.app/auth/google/callback`.
-4. Depois de mudar variáveis, faça **Redeploy**. Abra o site, entre com a senha e confira `/api/health`.
-5. Não coloque o token de escrita do GitHub (`GITHUB_TOKEN_WRITE`) numa instalação pública. Use só o de leitura.
