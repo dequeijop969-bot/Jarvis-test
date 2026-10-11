@@ -36,7 +36,10 @@ try {
   // 1. Primeiro acesso
   let r = await call('GET', '/api/state');
   assert.equal(r.j.needsProfile, true);
-  const html = (await call('GET', '/')).text;
+  const html = (await call('GET', '/app')).text;
+  const landing = (await call('GET', '/guia')).text, site = (await call('GET', '/')).text;
+  assert.match(site, /mordomo digital/); assert.ok(site.includes('href="/baixar"') && site.includes('href="/app"'), 'o site leva ao download e à versão web');
+  assert.match(landing, /Primeiros passos/); assert.ok(landing.includes('href="/app"')); assert.ok(!/id="pf"/.test(landing), 'landing não é o app');
   assert.match(html, /id="pf"/); assert.match(html, /Conectar Gmail/);
   r = await call('POST', '/api/profile', { name: 'x' }, { csrf: false });
   assert.equal(r.status, 403, 'escrita sem x-jarvis é recusada');

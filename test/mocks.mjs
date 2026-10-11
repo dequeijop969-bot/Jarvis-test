@@ -84,6 +84,8 @@ export function installMocks({ ttsMode = process.env.DEMO_TTS || 'ok', fail = ''
         out = { emails: list.map(e => ({ id: e.id, from_name: e.from_name, from_domain: e.from_domain, subject: e.subject, ...(TRIAGE[e.id] || { priority: 'baixa', summary: 'Promoção de loja', reason: 'newsletter', suspicious: false }), suspicious_reason: TRIAGE[e.id]?.suspicious_reason || '' })) };
       } else if (system.startsWith('Resuma este e-mail')) out = { text: 'O remetente pede que você confirme os dados do cartão para evitar suspensão. Eu não clicaria em nada: o domínio não é da Stripe.' };
       else if (system.includes('resumo contínuo')) out = { summary: 'O usuário conversou sobre população mundial.' };
+      // Talk com pedido de clicar/escrever código: a IA recomenda o modo Code (a interface mostra o botão).
+      else if (system.includes('MODO CODE (você está no modo Talk)') && /clica|clique|escreve|cria um html/.test(m)) out = { ...small, intro: 'Isso é trabalho para o modo Code, senhor. O Jarvis Code adoraria se sentir útil.', sugerir_code: true };
       else out = /oi|olá|bom dia|boa noite/.test(m) ? small : deck;
       const text = JSON.stringify(out);
       return isGem ? json({ candidates: [{ content: { parts: [{ text }] } }] }) : json({ content: [{ type: 'text', text }] });
