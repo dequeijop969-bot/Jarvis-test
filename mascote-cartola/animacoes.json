@@ -1,0 +1,66 @@
+{
+  "w": 48,
+  "h": 48,
+  "anims": {
+    "idle": {
+      "n": 8,
+      "fps": 6,
+      "loop": true,
+      "nome": "parado"
+    },
+    "walk": {
+      "n": 8,
+      "fps": 10,
+      "loop": true,
+      "nome": "andar"
+    },
+    "run": {
+      "n": 8,
+      "fps": 14,
+      "loop": true,
+      "nome": "correr"
+    },
+    "jump": {
+      "n": 8,
+      "fps": 14,
+      "loop": false,
+      "nome": "pular"
+    },
+    "think": {
+      "n": 8,
+      "fps": 6,
+      "loop": true,
+      "nome": "pensar"
+    },
+    "notebook": {
+      "n": 48,
+      "fps": 12,
+      "loop": true,
+      "nome": "digitar"
+    },
+    "wave": {
+      "n": 8,
+      "fps": 8,
+      "loop": true,
+      "nome": "acenar"
+    },
+    "tiphat": {
+      "n": 12,
+      "fps": 8,
+      "loop": false,
+      "nome": "cumprimentar"
+    },
+    "drag": {
+      "n": 8,
+      "fps": 10,
+      "loop": true,
+      "nome": "arrastado"
+    },
+    "sleep": {
+      "n": 8,
+      "fps": 4,
+      "loop": true,
+      "nome": "dormir"
+    }
+  }
+}
