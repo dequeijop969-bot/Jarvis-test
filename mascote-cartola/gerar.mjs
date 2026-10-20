@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Jarvis Code de cartola: o mascote em pixel art (corpo preto, cartola com faixa âmbar, gravata-borboleta, luvas brancas, olhos ciano).
+// Jarvis Code de cartola: o mascote em pixel art (corpo preto, cartola com fivela âmbar, casaca com caudas, luvas brancas, olhos ciano).
 // Tudo é desenhado aqui por código, sem dependências. Rode: node mascote-cartola/gerar.mjs
 // Gera: sprites/<anim>_NN.png (48x48, mesmo padrão de nomes que o Jarvis Desktop e o site usam em /jc/), folhas/<anim>.png (tira horizontal),
 //       previa/<anim>.gif e previa/vitrine.gif (ampliados, no fundo do site) e animacoes.json (quadros, fps, se repete).
@@ -13,9 +13,10 @@ const W = 48, H = 48;
 
 /* ---------- Paleta (grafite, âmbar e ciano do app) ---------- */
 const C = {
-  out: [6, 6, 9],
-  b0: [30, 31, 40], b1: [19, 20, 27], b2: [46, 48, 61], b3: [80, 84, 104],          // corpo: base, sombra, luz, borda
-  h0: [23, 23, 30], h1: [14, 14, 19], h2: [44, 45, 58], h3: [96, 100, 124],         // cartola de seda
+  out: [8, 7, 14],
+  b0: [29, 29, 44], b1: [18, 18, 29], b2: [45, 46, 70], b3: [82, 86, 124], spec: [150, 156, 200],   // corpo preto-azulado: base, sombra, luz, borda, reflexo
+  h0: [22, 21, 32], h1: [13, 12, 20], h2: [44, 44, 64], h3: [104, 108, 140],       // cartola de seda
+  shirt: [236, 236, 244], shirtD: [168, 170, 192], blush: [158, 66, 100],         // peito da casaca, bochechas
   amb: [242, 179, 61], ambL: [255, 214, 128], ambD: [176, 116, 28],                 // faixa e gravata
   eye: [95, 212, 255], eyeL: [214, 247, 255], eyeD: [44, 120, 150],
   glove: [238, 236, 228], gloveD: [176, 174, 166],
@@ -73,14 +74,14 @@ const crown = (a, b, c, d, e) => a + b + c + d.repeat(7) + e;   // 11 colunas
 const HAT = [
   '...' + crown('a', 'A', 'a', 'a', 'b') + '...',
   ...Array(6).fill('...' + crown('a', 'A', 'a', 'o', 'b') + '...'),
-  '...' + crown('Y', 'Y', 'y', 'y', 'd') + '...',               // faixa âmbar
-  '...' + crown('y', 'd', 'd', 'd', 'd') + '...',
+  '...' + crown('Y', 'Y', 'y', 'y', 'd').slice(0, 7) + 'WW' + 'yd' + '...',   // faixa âmbar com fivela
+  '...' + crown('y', 'd', 'd', 'd', 'd').slice(0, 7) + 'Wk' + 'dd' + '...',
   'a..' + crown('a', 'A', 'a', 'o', 'b') + '..a',               // pontas da aba viradas para cima
   'aaaaaaoooooooobbb',
   '.bbbbbbbbbbbbbbb.',
 ];
 if (HAT.some(r => r.length !== 17)) throw new Error('cartola torta');
-const HATC = { a: C.h2, A: C.h3, o: C.h0, b: C.h1, Y: C.ambL, y: C.amb, d: C.ambD };
+const HATC = { W: C.ambL, k: C.ambD, a: C.h2, A: C.h3, o: C.h0, b: C.h1, Y: C.ambL, y: C.amb, d: C.ambD };
 const HAT_HEAD = [8, 11], HAT_GRIP = [14, 12];                 // apoio na cabeça; onde a luva segura (logo abaixo da aba, à direita)
 function drawHat(l, wx, wy, rot, pivot) {
   wx = Math.round(wx); wy = Math.round(wy);
@@ -100,7 +101,7 @@ const BASE = { cx: 24, cy: 32, rx: 9, ry: 10 };
 const DEF = {
   view: 'side', bx: 0, by: 0, rx: 0, ry: 0, lean: 0, pivot: 'bottom', eyes: 'open', look: [0, 0], mouth: null,
   feet: [[0, 0], [0, 0]], feetLocal: null, hands: [[-10, 5], [10, 5]], handsW: null, behind: [false, false],
-  hat: { dx: 0, dy: 0, rot: 0 }, hatHand: null, glow: false, props: [], fx: [],
+  hat: { dx: 0, dy: 0, rot: 0 }, hatHand: null, tail: 30, glow: false, props: [], fx: [],
 };
 
 function geo(p) {
@@ -115,23 +116,47 @@ function geo(p) {
 }
 
 function drawBody(l, p, g) {
-  const lx = -0.55, ly = -0.83;   // luz de cima à esquerda
+  const lx = -0.55, ly = -0.83, side = p.view === 'side';   // luz de cima à esquerda
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const [ux, uy] = g.inv(x, y), nx = ux / (g.RX + 0.5), ny = uy / (g.RY + 0.5), r = Math.hypot(nx, ny);
     if (r > 1) continue;
     const wx = (nx * Math.cos(g.a) - ny * Math.sin(g.a)) / (r || 1), wy = (nx * Math.sin(g.a) + ny * Math.cos(g.a)) / (r || 1), d = wx * lx + wy * ly;
+    const chk = (x + y) % 2 === 0;   // pontilhado entre os tons
     let c = C.b0;
     if (r > 0.8 && d > 0.5) c = C.b3;
     else if (r > 0.5 && d > 0.3) c = C.b2;
-    else if (r > 0.6 && d < -0.4) c = C.b1;
+    else if (r > 0.42 && d > 0.3 && chk) c = C.b2;
+    else if (r > 0.68 && d < -0.4) c = C.b1;
+    else if (r > 0.58 && d < -0.4 && chk) c = C.b1;
+    if (Math.hypot(nx + 0.42, ny + 0.5) < 0.13) c = C.spec;                       // reflexo
+    else if (Math.hypot(nx + 0.42, ny + 0.5) < 0.2 && chk) c = C.b3;
+    // peito branco da casaca: estreito no colarinho, abre para baixo
+    const bx = ux * BASE.rx / g.RX - (side ? 4 : 0), by = uy * BASE.ry / g.RY;
+    if (by >= 3 && by <= 10 && r < (side ? 0.97 : 0.9) && Math.abs(bx) <= 0.8 + (by - 3) * 0.45) c = bx > 0.6 + (by - 3) * 0.3 || r > 0.8 ? C.shirtD : C.shirt;
+    if (Math.abs(bx) < 0.5 && Math.abs(by - 9) < 0.5) c = C.b1;                    // botão
     if (p.glow && r > 0.62 && wx > 0.55 && wy < 0.6) c = r > 0.86 ? C.glowL : C.glow;
     l.set(x, y, c);
   }
 }
 
+// Caudas da casaca (só de lado): saem das costas e balançam conforme p.tail (graus a partir de "pendurada")
+function tri(l, a, b, c, col) {
+  const [x0, x1] = [Math.min(a[0], b[0], c[0]), Math.max(a[0], b[0], c[0])].map(Math.round), [y0, y1] = [Math.min(a[1], b[1], c[1]), Math.max(a[1], b[1], c[1])].map(Math.round);
+  const e = (p, q, x, y) => (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0]);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const s1 = e(a, b, x, y), s2 = e(b, c, x, y), s3 = e(c, a, x, y);
+    if ((s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0)) l.set(x, y, col);
+  }
+}
+function drawTail(l, p, g, k) {
+  const t = (p.tail + p.lean + k * 14) * Math.PI / 180, len = 9 - k;
+  const top = g.L(-6, 3), bot = g.L(-3, 9), base = [(top[0] + bot[0]) / 2, (top[1] + bot[1]) / 2];
+  tri(l, top, bot, [base[0] - Math.sin(t) * len, base[1] + Math.cos(t) * len], k ? C.b1 : C.b0);
+}
+
 function eye(l, x, y, k) {
-  if (k === 'open') { rect(l, x, y, x + 1, y + 2, C.eye); l.set(x, y, C.eyeL); }
-  else if (k === 'wide') { rect(l, x, y - 1, x + 1, y + 2, C.eye); rect(l, x, y - 1, x + 1, y - 1, C.eyeL); }
+  if (k === 'open') { rect(l, x, y - 1, x + 1, y + 2, C.eye); l.set(x, y - 1, C.eyeL); l.set(x, y, C.eyeL); rect(l, x, y + 2, x + 1, y + 2, C.eyeD); l.set(x, y + 2, C.eye); }
+  else if (k === 'wide') { rect(l, x, y - 2, x + 1, y + 2, C.eye); rect(l, x, y - 2, x + 1, y - 2, C.eyeL); l.set(x, y - 1, C.eyeL); }
   else if (k === 'blink') rect(l, x, y + 2, x + 1, y + 2, C.eye);
   else if (k === 'closed') rect(l, x, y + 2, x + 1, y + 2, C.eyeD);
   else if (k === 'squint') rect(l, x, y + 1, x + 1, y + 2, C.eye);
@@ -141,7 +166,11 @@ function eye(l, x, y, k) {
 const BOW = { L: C.ambL, A: C.amb, K: C.ambD, D: C.ambD };
 function drawFace(l, p, g) {
   const side = p.view === 'side', kinds = Array.isArray(p.eyes) ? p.eyes : [p.eyes, p.eyes], r = v => v.map(Math.round);
-  (side ? [[1, -4], [6, -4]] : [[-4, -4], [3, -4]]).forEach(([x, y], i) => { const [ex, ey] = r(g.L(x + p.look[0], y + p.look[1])); eye(l, ex, ey, kinds[i]); });
+  (side ? [[1, -4], [6, -4]] : [[-4, -4], [3, -4]]).forEach(([x, y], i) => {
+    const [ex, ey] = r(g.L(x + p.look[0], y + p.look[1])), [cx, cy] = r(g.L(x, y));
+    const bl = i ? cx + 2 : cx - 2; l.set(bl, cy + 3, C.blush); l.set(bl + (i ? -1 : 1), cy + 3, C.blush);   // bochechas
+    eye(l, ex, ey, kinds[i]);
+  });
   const [tx, ty] = r(g.L(side ? 5 : 0, 5));
   stamp(l, tx - 2, ty, ['LA.LA', 'AAKAA', 'DD.DD'], ch => BOW[ch]);   // gravata-borboleta
   if (!p.mouth) return;
@@ -162,7 +191,9 @@ function drawLeg(l, p, g, i) {
 function handPos(p, g, i) { return p.handsW?.[i] || g.L(...p.hands[i]); }
 function drawArm(l, p, g, i) {
   const [sx, sy] = g.L(i ? 7 : -7, 2), [hx, hy] = handPos(p, g, i).map(Math.round);
+  const pts = linePts(sx, sy, hx, hy), cuff = pts.filter(([x, y]) => Math.abs(x - hx) > 1 || Math.abs(y - hy) > 1).pop();
   line(l, sx, sy, hx, hy, i ? C.b0 : C.b1);
+  if (cuff) l.set(cuff[0], cuff[1], C.shirt);   // punho branco
   rect(l, hx - 1, hy - 1, hx + 1, hy + 1, C.glove);
   l.set(hx + 1, hy, C.gloveD); l.set(hx + 1, hy + 1, C.gloveD); l.set(hx, hy + 1, C.gloveD);
 }
@@ -173,6 +204,7 @@ function render(pose) {
   [0, 1].forEach(i => { if (p.behind[i]) part(l => drawArm(l, p, g, i)); });
   part(l => drawLeg(l, p, g, 0));
   part(l => drawLeg(l, p, g, 1));
+  if (p.view === 'side') { part(l => drawTail(l, p, g, 1)); part(l => drawTail(l, p, g, 0)); }
   part(l => { drawBody(l, p, g); drawFace(l, p, g); });
   if (!p.hatHand) part(l => { const [x, y] = g.L(0, -10); drawHat(l, x + p.hat.dx, y + p.hat.dy, p.hat.rot + p.lean, HAT_HEAD); });
   p.props.forEach(pr => part(pr));
@@ -216,7 +248,7 @@ const ANIM = {};
   const FD = [[3, 0], [2, 0], [0, 0], [-2, 0], [-3, 0], [-2, -1], [0, -2], [2, -1]], BOB = [0, 1, -1, 0, 0, 1, -1, 0];
   ANIM.walk = { nome: 'andar', fps: 10, loop: true, frames: FD.map((front, i) => {
     const back = FD[(i + 4) % 8];
-    return { by: BOB[i], ...(BOB[i] > 0 ? { rx: 0.5, ry: -0.5 } : {}), feet: [back, front], hat: { dy: lag(BOB, i) },
+    return { tail: 32 - BOB[i] * 10, by: BOB[i], ...(BOB[i] > 0 ? { rx: 0.5, ry: -0.5 } : {}), feet: [back, front], hat: { dy: lag(BOB, i) },
       hands: [[-10 - back[0] * 0.8, 5 - Math.abs(back[0]) * 0.4], [10 - front[0] * 0.8, 5 - Math.abs(front[0]) * 0.4]] };
   }) };
 }
@@ -225,7 +257,7 @@ const ANIM = {};
   const FD = [[5, 0], [3, 0], [0, 0], [-3, 0], [-5, -1], [-3, -3], [0, -4], [3, -2]], BOB = [0, 1, -1, -1, 0, 1, -1, -1];
   ANIM.run = { nome: 'correr', fps: 14, loop: true, frames: FD.map((front, i) => {
     const back = FD[(i + 4) % 8], dust = [[14, 45, 1], [12, 44, 2], [10, 43, 3], null][i % 4];
-    return { lean: 8, by: BOB[i], feet: [back, front], eyes: 'squint', look: [1, 0], hat: { dy: lag(BOB, i), rot: -6 },
+    return { tail: 72 + (i % 2) * 10, lean: 8, by: BOB[i], feet: [back, front], eyes: 'squint', look: [1, 0], hat: { dy: lag(BOB, i), rot: -6 },
       hands: [[-11 - back[0] * 0.4, 3 - Math.abs(back[0]) * 0.3], [11 - front[0] * 0.4, 3 - Math.abs(front[0]) * 0.3]],
       fx: dust ? [FX.dust(...dust)] : [] };
   }) };
@@ -233,14 +265,14 @@ const ANIM = {};
 
 // pular: agacha, estica, encolhe as pernas no alto, a cartola flutua na descida, aterrissa achatado (o site sobe o quadro por fora)
 ANIM.jump = { nome: 'pular', fps: 14, loop: false, frames: [
-  { by: 3, ry: -2, rx: 1, eyes: 'squint', hands: [[-11, 6], [11, 6]], hat: { dy: -1 } },
-  { by: -2, ry: 2, rx: -1, feet: [[-1, -1], [1, -2]], hands: [[-9, -9], [9, -9]], hat: { dy: 2 } },
-  { by: -2, ry: 1, rx: -0.5, feet: [[-2, -3], [1, -3]], hands: [[-12, -3], [12, -3]], hat: { dy: 1 } },
-  { by: -2, feet: [[-1, -4], [2, -4]], hands: [[-12, -5], [12, -5]], eyes: 'happy', hat: { dy: -1 } },
-  { by: -2, feet: [[-1, -3], [1, -3]], hands: [[-11, -7], [11, -7]], eyes: 'happy', hat: { dy: -3, rot: 4 } },
-  { by: -1, ry: 1, feet: [[-1, -1], [1, -1]], hands: [[-10, -9], [10, -9]], eyes: 'wide', hat: { dy: -4, rot: 8 } },
-  { by: 3, ry: -2.5, rx: 1.5, feet: [[-2, 0], [2, 0]], hands: [[-12, 5], [12, 5]], eyes: 'squint', hat: { dy: -1, rot: 3 } },
-  {},
+  { tail: 22, by: 3, ry: -2, rx: 1, eyes: 'squint', hands: [[-11, 6], [11, 6]], hat: { dy: -1 } },
+  { tail: 6, by: -2, ry: 2, rx: -1, feet: [[-1, -1], [1, -2]], hands: [[-9, -9], [9, -9]], hat: { dy: 2 } },
+  { tail: 14, by: -2, ry: 1, rx: -0.5, feet: [[-2, -3], [1, -3]], hands: [[-12, -3], [12, -3]], hat: { dy: 1 } },
+  { tail: 45, by: -2, feet: [[-1, -4], [2, -4]], hands: [[-12, -5], [12, -5]], eyes: 'happy', hat: { dy: -1 } },
+  { tail: 75, by: -2, feet: [[-1, -3], [1, -3]], hands: [[-11, -7], [11, -7]], eyes: 'happy', hat: { dy: -3, rot: 4 } },
+  { tail: 115, by: -1, ry: 1, feet: [[-1, -1], [1, -1]], hands: [[-10, -9], [10, -9]], eyes: 'wide', hat: { dy: -4, rot: 8 } },
+  { tail: 50, by: 3, ry: -2.5, rx: 1.5, feet: [[-2, 0], [2, 0]], hands: [[-12, 5], [12, 5]], eyes: 'squint', hat: { dy: -1, rot: 3 } },
+  { tail: 30,},
 ] };
 
 // pensar: mão no queixo, a outra cruzada na barriga, olhar para cima, bate o pé, reticências
@@ -265,7 +297,7 @@ ANIM.think = { nome: 'pensar', fps: 6, loop: true, frames: [0, 1, 2, 3, 4, 5, 6,
       if (hand === 'L') L = [rnd() < 0.5 ? 34 : 35, 43]; else R = [rnd() < 0.5 ? 38 : 40, 43];
     }
     for (const [t0, ch, c] of GLYPHS) { const age = f - t0; if (age >= 0 && age < 7) fx.push(FX.glyph(ch, 36 + (age >= 3 ? 1 : 0), 32 - age, c)); }
-    return { ...sit, feet: [[5, 0], [4, 0]], glow: true, behind: [true, false], handsW: [L, R], props: [laptop(f)], fx,
+    return { ...sit, tail: 78, feet: [[5, 0], [4, 0]], glow: true, behind: [true, false], handsW: [L, R], props: [laptop(f)], fx,
       look: pause ? [1, 0] : [1, 1], eyes: f === 9 || f === 37 || f === 27 ? 'blink' : 'open', hat: { dy: f === 45 ? -1 : 0 } };
   }) };
 }
@@ -273,7 +305,7 @@ ANIM.think = { nome: 'pensar', fps: 6, loop: true, frames: [0, 1, 2, 3, 4, 5, 6,
 { // acenar: de frente, sorrindo, a cartola de lado
   const K = [0, 0, 1, 1, 0, 0, 1, 1], WX = [11, 13, 11, 9, 11, 13, 11, 9];
   ANIM.wave = { nome: 'acenar', fps: 8, loop: true, frames: K.map((k, i) => ({
-    view: 'front', ...sq(k), eyes: 'happy', mouth: 'smile', hands: [[-10, 5], [WX[i], -9 + (i % 2)]], hat: { rot: 6, dy: lag(K, i) },
+    view: 'front', ...sq(k), eyes: 'happy', mouth: 'smile', hands: [[-10, 5], [WX[i], -9 + (i % 2)]], hat: { dy: lag(K, i) },
   })) };
 }
 
@@ -296,7 +328,7 @@ ANIM.tiphat = { nome: 'cumprimentar', fps: 8, loop: false, frames: [
 { // arrastado: pendurado pelo topo, balança, esperneia, gota de suor
   const SW = [8, 5, 0, -5, -8, -5, 0, 5];
   ANIM.drag = { nome: 'arrastado', fps: 10, loop: true, frames: SW.map((s, i) => ({
-    pivot: 'top', lean: s * 0.8, by: -3, ry: 1.5, rx: -0.5, eyes: 'wide', mouth: 'o',
+    pivot: 'top', tail: 12 - s, lean: s * 0.8, by: -3, ry: 1.5, rx: -0.5, eyes: 'wide', mouth: 'o',
     feetLocal: [[-3, 14 + (i % 2)], [3, 14 + ((i + 1) % 2)]], hands: [[-12, i % 2 ? -5 : -3], [12, i % 2 ? -3 : -5]],
     hat: { rot: -12 + s * 0.5, dy: -1 }, fx: i < 4 ? [FX.sweat(12, 19 + i)] : [],
   })) };
@@ -306,7 +338,7 @@ ANIM.tiphat = { nome: 'cumprimentar', fps: 8, loop: false, frames: [
   const K = [0, 0, 1, 1, 2, 2, 1, 1];
   ANIM.sleep = { nome: 'dormir', fps: 4, loop: true, frames: K.map((k, i) => {
     const fx = [i, (i + 4) % 8].filter(a => a < 7).map(a => FX.z(33 + a, 21 - a * 2, a >= 3));
-    return { by: 4 + k / 2, ry: -0.5 - k / 2, rx: 0.5 + k / 4, eyes: 'closed', hat: { dy: 4, rot: 6 }, hands: [[-10, 8], [10, 8]], feet: [[2, 0], [4, 0]], fx };
+    return { tail: 82, by: 4 + k / 2, ry: -0.5 - k / 2, rx: 0.5 + k / 4, eyes: 'closed', hat: { dy: 4, rot: 6 }, hands: [[-10, 8], [10, 8]], feet: [[2, 0], [4, 0]], fx };
   }) };
 }
 

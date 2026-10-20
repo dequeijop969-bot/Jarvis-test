@@ -1,6 +1,6 @@
 # Jarvis Code de cartola
 
-Mascote em pixel art inspirado no Jarvis Code: corpo **preto**, **cartola** de seda com faixa âmbar, gravata-borboleta, luvas brancas e olhos ciano (as cores do app). Quadros de 48x48, olhando para a direita (o site já espelha para a esquerda).
+Mascote em pixel art inspirado no Jarvis Code: corpo **preto** com reflexo, **cartola** de seda com faixa e fivela âmbar, casaca de mordomo (peito branco, gravata-borboleta e caudas que balançam), luvas brancas com punho, olhos ciano brilhantes e bochechas rosadas. Quadros de 48x48, olhando para a direita (o site já espelha para a esquerda).
 
 ![vitrine](previa/vitrine.gif)
 
