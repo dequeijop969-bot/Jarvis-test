@@ -97,7 +97,7 @@ function drawHat(l, wx, wy, rot, pivot) {
    Pose: view 'side' (olhando para a direita, o site espelha para a esquerda) ou 'front'; bx/by deslocam o corpo; rx/ry achatam/esticam;
    lean inclina (graus, + = para frente) em torno de baixo do corpo (ou do topo com pivot 'top'); hands em coordenadas do corpo
    (relativas ao centro; handsW em pixels do quadro); feet: deslocamento dos pés no chão (feetLocal: pés presos ao corpo, pendurado). */
-const BASE = { cx: 24, cy: 32, rx: 9, ry: 10 };   // medidas de referência das poses (rosto, mãos, pés são dados nelas)
+const BASE = { cx: 24, cy: 35, rx: 9, ry: 10 };   // medidas de referência das poses (rosto, mãos, pés são dados nelas)
 const SHAPE = { rx: 10, ry: 7, n: 14 };             // o corpo de verdade: um bloco reto, como o Claw'd (superelipse quase retangular)
 const DEF = {
   view: 'side', bx: 0, by: 0, rx: 0, ry: 0, lean: 0, pivot: 'bottom', eyes: 'open', look: [0, 0], mouth: null,
