@@ -98,7 +98,7 @@ function drawHat(l, wx, wy, rot, pivot) {
    lean inclina (graus, + = para frente) em torno de baixo do corpo (ou do topo com pivot 'top'); hands em coordenadas do corpo
    (relativas ao centro; handsW em pixels do quadro); feet: deslocamento dos pés no chão (feetLocal: pés presos ao corpo, pendurado). */
 const BASE = { cx: 24, cy: 32, rx: 9, ry: 10 };   // medidas de referência das poses (rosto, mãos, pés são dados nelas)
-const SHAPE = { rx: 11, ry: 8, n: 6 };              // o corpo de verdade: um bloco largo de cantos arredondados (superelipse)
+const SHAPE = { rx: 10, ry: 7, n: 14 };             // o corpo de verdade: um bloco reto, como o Claw'd (superelipse quase retangular)
 const DEF = {
   view: 'side', bx: 0, by: 0, rx: 0, ry: 0, lean: 0, pivot: 'bottom', eyes: 'open', look: [0, 0], mouth: null,
   feet: [[0, 0], [0, 0]], feetLocal: null, hands: [[-10, 5], [10, 5]], handsW: null, behind: [false, false],
@@ -151,7 +151,7 @@ function tri(l, a, b, c, col) {
   }
 }
 function drawTail(l, p, g, k) {
-  const t = (p.tail + p.lean + k * 14) * Math.PI / 180, len = 9 - k;
+  const t = (p.tail + p.lean + k * 14) * Math.PI / 180, len = 6 - k;
   const top = g.L(-6, 3), bot = g.L(-3, 9), base = [(top[0] + bot[0]) / 2, (top[1] + bot[1]) / 2];
   tri(l, top, bot, [base[0] - Math.sin(t) * len, base[1] + Math.cos(t) * len], k ? C.b1 : C.b0);
 }
@@ -181,13 +181,14 @@ function drawFace(l, p, g) {
   else { rect(l, mx - 1, my, mx, my, C.out); rect(l, mx - 1, my + 1, mx, my + 1, C.pink); }
 }
 
-function drawLeg(l, p, g, i) {
-  const side = p.view === 'side', s = i ? 1 : -1, hx = s * (side ? 3 : 4);
-  const hip = g.L(hx, 8);
-  const [fx, fy] = (p.feetLocal ? g.L(...p.feetLocal[i]) : [BASE.cx + hx + p.feet[i][0], 46 + p.feet[i][1]]).map(Math.round);
-  line(l, hip[0], hip[1], fx, fy - 1, i ? C.b0 : C.b1, 3);
-  if (side) { rect(l, fx - 1, fy - 1, fx + 2, fy - 1, C.shoe); rect(l, fx - 1, fy, fx + 3, fy, C.shoe); l.set(fx + 1, fy - 1, C.shoeL); }
-  else { rect(l, fx - 1, fy - 1, fx + 1, fy - 1, C.shoe); rect(l, fx - 2, fy, fx + 2, fy, C.shoe); l.set(fx - 1, fy - 1, C.shoeL); }
+// Quatro perninhas retas, como as do Claw'd. Pares alternados: as pernas 0 e 2 seguem feet[0], as 1 e 3 seguem feet[1].
+const LEGS = [-7, -3, 3, 7];
+function drawLeg(l, p, g, k) {
+  const pair = k % 2, off = LEGS[k], lx = off * BASE.rx / SHAPE.rx, hip = g.L(lx, 8);
+  const [fx, fy] = (p.feetLocal ? g.L(lx + (p.feetLocal[pair][0] - (pair ? 3 : -3)) * 0.5, p.feetLocal[pair][1])
+    : [BASE.cx + off + p.feet[pair][0] * 0.5, 46 + p.feet[pair][1]]).map(Math.round);
+  const col = pair ? C.b0 : C.b1;
+  for (const [x, y] of linePts(hip[0] - 0.5, hip[1], fx - 0.5, fy)) { l.set(x, y, col); l.set(x + 1, y, col); }
 }
 
 function handPos(p, g, i) { return p.handsW?.[i] || g.L(...p.hands[i]); }
@@ -204,8 +205,7 @@ function render(pose) {
   const p = { ...DEF, ...pose, hat: { ...DEF.hat, ...pose.hat } }, g = geo(p), frame = new Layer();
   const part = fn => { const l = new Layer(); fn(l); frame.over(l.outline()); };
   [0, 1].forEach(i => { if (p.behind[i]) part(l => drawArm(l, p, g, i)); });
-  part(l => drawLeg(l, p, g, 0));
-  part(l => drawLeg(l, p, g, 1));
+  [0, 2, 1, 3].forEach(k => part(l => drawLeg(l, p, g, k)));   // par de trás primeiro
   if (p.view === 'side') { part(l => drawTail(l, p, g, 1)); part(l => drawTail(l, p, g, 0)); }
   part(l => { drawBody(l, p, g); drawFace(l, p, g); });
   if (!p.hatHand) part(l => { const [x, y] = g.L(0, -10); drawHat(l, x + p.hat.dx, y + p.hat.dy, p.hat.rot + p.lean, HAT_HEAD); });
