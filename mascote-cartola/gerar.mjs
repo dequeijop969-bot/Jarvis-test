@@ -8,7 +8,9 @@ import { deflateSync } from 'node:zlib';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const DIR = path.dirname(fileURLToPath(import.meta.url));
+// --estilo=claw: versão mais fiel ao Claw'd (tocos no lugar dos braços, olhos quadrados, sem bochechas, peito branco e caudas), na pasta claw/
+const CLAW = process.argv.includes('--estilo=claw');
+const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), CLAW ? 'claw' : '');
 const W = 48, H = 48;
 
 /* ---------- Paleta (grafite, âmbar e ciano do app) ---------- */
@@ -132,10 +134,12 @@ function drawBody(l, p, g) {
     else if (r > 0.58 && d < -0.4 && chk) c = C.b1;
     if (Math.hypot(nx + 0.42, ny + 0.5) < 0.13) c = C.spec;                       // reflexo
     else if (Math.hypot(nx + 0.42, ny + 0.5) < 0.2 && chk) c = C.b3;
-    // peito branco da casaca: estreito no colarinho, abre para baixo
-    const bx = ux * BASE.rx / g.RX - (side ? 4 : 0), by = uy * BASE.ry / g.RY;
-    if (by >= 3 && by <= 10 && r < (side ? 0.97 : 0.9) && Math.abs(bx) <= 0.8 + (by - 3) * 0.45) c = bx > 0.6 + (by - 3) * 0.3 || r > 0.8 ? C.shirtD : C.shirt;
-    if (Math.abs(bx) < 0.5 && Math.abs(by - 9) < 0.5) c = C.b1;                    // botão
+    if (!CLAW) {
+      // peito branco da casaca: estreito no colarinho, abre para baixo
+      const bx = ux * BASE.rx / g.RX - (side ? 4 : 0), by = uy * BASE.ry / g.RY;
+      if (by >= 3 && by <= 10 && r < (side ? 0.97 : 0.9) && Math.abs(bx) <= 0.8 + (by - 3) * 0.45) c = bx > 0.6 + (by - 3) * 0.3 || r > 0.8 ? C.shirtD : C.shirt;
+      if (Math.abs(bx) < 0.5 && Math.abs(by - 9) < 0.5) c = C.b1;                    // botão
+    }
     if (p.glow && r > 0.62 && wx > 0.55 && wy < 0.6) c = r > 0.86 ? C.glowL : C.glow;
     l.set(x, y, c);
   }
@@ -157,7 +161,8 @@ function drawTail(l, p, g, k) {
 }
 
 function eye(l, x, y, k) {
-  if (k === 'open') { rect(l, x, y - 1, x + 1, y + 2, C.eye); l.set(x, y - 1, C.eyeL); l.set(x, y, C.eyeL); rect(l, x, y + 2, x + 1, y + 2, C.eyeD); l.set(x, y + 2, C.eye); }
+  if (k === 'open' && CLAW) rect(l, x, y, x + 1, y + 1, C.eye);   // olhinho quadrado
+  else if (k === 'open') { rect(l, x, y - 1, x + 1, y + 2, C.eye); l.set(x, y - 1, C.eyeL); l.set(x, y, C.eyeL); rect(l, x, y + 2, x + 1, y + 2, C.eyeD); l.set(x, y + 2, C.eye); }
   else if (k === 'wide') { rect(l, x, y - 2, x + 1, y + 2, C.eye); rect(l, x, y - 2, x + 1, y - 2, C.eyeL); l.set(x, y - 1, C.eyeL); }
   else if (k === 'blink') rect(l, x, y + 2, x + 1, y + 2, C.eye);
   else if (k === 'closed') rect(l, x, y + 2, x + 1, y + 2, C.eyeD);
@@ -170,7 +175,7 @@ function drawFace(l, p, g) {
   const side = p.view === 'side', kinds = Array.isArray(p.eyes) ? p.eyes : [p.eyes, p.eyes], r = v => v.map(Math.round);
   (side ? [[1, -4], [6, -4]] : [[-4, -4], [3, -4]]).forEach(([x, y], i) => {
     const [ex, ey] = r(g.L(x + p.look[0], y + p.look[1])), [cx, cy] = r(g.L(x, y));
-    const bl = i ? cx + 2 : cx - 2; l.set(bl, cy + 3, C.blush); l.set(bl + (i ? -1 : 1), cy + 3, C.blush);   // bochechas
+    const bl = i ? cx + 2 : cx - 2; if (!CLAW) { l.set(bl, cy + 3, C.blush); l.set(bl + (i ? -1 : 1), cy + 3, C.blush); }   // bochechas
     eye(l, ex, ey, kinds[i]);
   });
   const [tx, ty] = r(g.L(side ? 5 : 0, 5));
@@ -191,8 +196,18 @@ function drawLeg(l, p, g, k) {
   for (const [x, y] of linePts(hip[0] - 0.5, hip[1], fx - 0.5, fy)) { l.set(x, y, col); l.set(x + 1, y, col); }
 }
 
-function handPos(p, g, i) { return p.handsW?.[i] || g.L(...p.hands[i]); }
+function handPos(p, g, i) {
+  const h = p.handsW?.[i] || g.L(...p.hands[i]);
+  if (!CLAW) return h;
+  const e = g.L(i ? 8 : -8, 1);   // o toco sai de lado; só sobe quando a mão sobe (acenar, cartola)
+  return [e[0] + (i ? 5 : -5), e[1] + Math.max(-7, Math.min(1, (h[1] - e[1]) * 0.6))];
+}
 function drawArm(l, p, g, i) {
+  if (CLAW) {   // toco retangular, como o do Claw'd
+    const [ex, ey] = g.L(i ? 8 : -8, 2), [hx, hy] = handPos(p, g, i);
+    for (const [x, y] of linePts(ex, ey, hx, hy)) rect(l, x - 1, y - 2, x + 2, y + 1, C.b0);
+    return;
+  }
   const [sx, sy] = g.L(i ? 7 : -7, 2), [hx, hy] = handPos(p, g, i).map(Math.round);
   const pts = linePts(sx, sy, hx, hy), cuff = pts.filter(([x, y]) => Math.abs(x - hx) > 1 || Math.abs(y - hy) > 1).pop();
   line(l, sx, sy, hx, hy, i ? C.b0 : C.b1);
@@ -204,14 +219,14 @@ function drawArm(l, p, g, i) {
 function render(pose) {
   const p = { ...DEF, ...pose, hat: { ...DEF.hat, ...pose.hat } }, g = geo(p), frame = new Layer();
   const part = fn => { const l = new Layer(); fn(l); frame.over(l.outline()); };
-  [0, 1].forEach(i => { if (p.behind[i]) part(l => drawArm(l, p, g, i)); });
+  [0, 1].forEach(i => { if (p.behind[i] || CLAW) part(l => drawArm(l, p, g, i)); });   // no estilo claw os tocos saem de trás do corpo
   [0, 2, 1, 3].forEach(k => part(l => drawLeg(l, p, g, k)));   // par de trás primeiro
-  if (p.view === 'side') { part(l => drawTail(l, p, g, 1)); part(l => drawTail(l, p, g, 0)); }
+  if (p.view === 'side' && !CLAW) { part(l => drawTail(l, p, g, 1)); part(l => drawTail(l, p, g, 0)); }
   part(l => { drawBody(l, p, g); drawFace(l, p, g); });
   if (!p.hatHand) part(l => { const [x, y] = g.L(0, -10); drawHat(l, x + p.hat.dx, y + p.hat.dy, p.hat.rot + p.lean, HAT_HEAD); });
   p.props.forEach(pr => part(pr));
   if (p.hatHand) part(l => { const [x, y] = handPos(p, g, 1); drawHat(l, x, y, p.hatHand.rot, HAT_GRIP); });
-  [0, 1].forEach(i => { if (!p.behind[i]) part(l => drawArm(l, p, g, i)); });
+  [0, 1].forEach(i => { if (!p.behind[i] && !CLAW) part(l => drawArm(l, p, g, i)); });
   p.fx.forEach(f => part(f));
   return frame;
 }

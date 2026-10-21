@@ -27,3 +27,9 @@ Mascote em pixel art inspirado no Jarvis Code: corpo **preto em bloco reto com 4
 ## Gerar de novo
 
 Tudo é desenhado por código, sem dependências: edite `gerar.mjs` (paleta, cartola, poses) e rode `node mascote-cartola/gerar.mjs`.
+
+## Versão "claw" (mais fiel ao Claw'd)
+
+![vitrine claw](claw/previa/vitrine.gif)
+
+Mesmas animações e nomes, em `claw/`: tocos retangulares no lugar dos braços com luva, olhinhos quadrados, sem bochechas, peito branco e caudas (ficam a cartola e a gravata). Gere com `node mascote-cartola/gerar.mjs --estilo=claw`.
