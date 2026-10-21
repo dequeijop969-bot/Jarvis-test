@@ -61,6 +61,48 @@
       "fps": 4,
       "loop": true,
       "nome": "dormir"
+    },
+    "happy": {
+      "n": 8,
+      "fps": 10,
+      "loop": true,
+      "nome": "feliz"
+    },
+    "sad": {
+      "n": 8,
+      "fps": 6,
+      "loop": true,
+      "nome": "triste"
+    },
+    "angry": {
+      "n": 8,
+      "fps": 12,
+      "loop": true,
+      "nome": "bravo"
+    },
+    "surprised": {
+      "n": 8,
+      "fps": 8,
+      "loop": true,
+      "nome": "surpreso"
+    },
+    "confused": {
+      "n": 8,
+      "fps": 6,
+      "loop": true,
+      "nome": "confuso"
+    },
+    "love": {
+      "n": 8,
+      "fps": 8,
+      "loop": true,
+      "nome": "apaixonado"
+    },
+    "dizzy": {
+      "n": 8,
+      "fps": 10,
+      "loop": true,
+      "nome": "tonto"
     }
   }
 }

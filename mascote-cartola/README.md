@@ -13,11 +13,18 @@ Mascote em pixel art inspirado no Jarvis Code: corpo **preto em bloco reto com 4
 | `run_NN.png` | correr (com poeira) | 8 | 14 | sim |
 | `jump_NN.png` | pular (a cartola flutua na descida) | 8 | 14 | não |
 | `think_NN.png` | pensar (mão no queixo, reticências) | 8 | 6 | sim |
-| `notebook_NN.png` | digitar no notebook (com pausa, Enter e símbolos de código) | 48 | 12 | sim |
+| `notebook_NN.png` | digitar no notebook, mudando de cara: concentrado (língua de fora), contente, confuso (?), "aha!", determinado e estrelas no Enter | 48 | 12 | sim |
 | `wave_NN.png` | acenar (de frente) | 8 | 8 | sim |
 | `tiphat_NN.png` | cumprimentar (ergue a cartola) | 12 | 8 | não |
 | `drag_NN.png` | sendo arrastado (pendurado, esperneando) | 8 | 10 | sim |
 | `sleep_NN.png` | dormir (cartola nos olhos, zzz) | 8 | 4 | sim |
+| `happy_NN.png` | feliz / tarefa concluída (pulinhos, olhos de estrela) | 8 | 10 | sim |
+| `sad_NN.png` | triste / deu erro (lágrima) | 8 | 6 | sim |
+| `angry_NN.png` | bravo (treme, marca de raiva) | 8 | 12 | sim |
+| `surprised_NN.png` | surpreso (a cartola salta, !) | 8 | 8 | sim |
+| `confused_NN.png` | confuso (inclina a cabeça, ?) | 8 | 6 | sim |
+| `love_NN.png` | apaixonado (olhos de coração) | 8 | 8 | sim |
+| `dizzy_NN.png` | tonto (olhos em X, estrelinhas girando) | 8 | 10 | sim |
 
 - `sprites/`: um PNG por quadro (transparente). Os nomes `walk`, `jump`, `think` e `notebook` são os mesmos que o Jarvis Desktop e o site (`/jc/`) já usam: copiar para `mascote/sprites` troca o mascote. As outras animações precisam ser ligadas no código.
 - `folhas/`: cada animação numa tira horizontal (para motores de jogo).

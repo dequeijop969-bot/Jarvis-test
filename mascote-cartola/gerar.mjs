@@ -26,7 +26,7 @@ const C = {
   lap: [96, 100, 114], lapL: [150, 154, 168], lapD: [62, 65, 76], keyGlow: [150, 214, 232],
   scr: [95, 212, 255], scrL: [200, 244, 255],
   glow: [34, 72, 90], glowL: [52, 112, 138],                                        // luz da tela no corpo
-  white: [241, 239, 233], dust: [118, 120, 132], dustD: [74, 76, 88], pink: [196, 84, 96], sweat: [150, 220, 255],
+  white: [241, 239, 233], dust: [118, 120, 132], dustD: [74, 76, 88], pink: [196, 84, 96], heart: [255, 105, 140], heartL: [255, 190, 205], anger: [235, 72, 72], sweat: [150, 220, 255],
 };
 
 /* ---------- Camadas: cada parte (perna, corpo, cartola, braço...) ganha contorno próprio antes de ir para o quadro ---------- */
@@ -66,6 +66,8 @@ const FONT = {
   L: ['#..', '#..', '#..', '#..', '###'], M: ['#...#', '##.##', '#.#.#', '#...#', '#...#'], N: ['#..#', '##.#', '#.##', '#..#', '#..#'],
   O: ['###', '#.#', '#.#', '#.#', '###'], P: ['##.', '#.#', '##.', '#..', '#..'], R: ['##.', '#.#', '##.', '#.#', '#.#'],
   S: ['.##', '#..', '.#.', '..#', '##.'], T: ['###', '.#.', '.#.', '.#.', '.#.'], U: ['#.#', '#.#', '#.#', '#.#', '###'],
+  F: ['###', '#..', '##.', '#..', '#..'], V: ['#.#', '#.#', '#.#', '#.#', '.#.'], X: ['#.#', '#.#', '.#.', '#.#', '#.#'], Z: ['###', '..#', '.#.', '#..', '###'],
+  '?': ['##.', '..#', '.#.', '...', '.#.'], '!': ['#', '#', '#', '.', '#'],
   '<': ['..#', '.#.', '#..', '.#.', '..#'], '>': ['#..', '.#.', '..#', '.#.', '#..'], '/': ['..#', '..#', '.#.', '#..', '#..'],
   '{': ['.##', '.#.', '#..', '.#.', '.##'], '}': ['##.', '.#.', '..#', '.#.', '##.'], ';': ['...', '.#.', '...', '.#.', '#..'],
 };
@@ -160,14 +162,31 @@ function drawTail(l, p, g, k) {
   tri(l, top, bot, [base[0] - Math.sin(t) * len, base[1] + Math.cos(t) * len], k ? C.b1 : C.b0);
 }
 
-function eye(l, x, y, k) {
-  if (k === 'open' && CLAW) { rect(l, x, y, x + 2, y + 2, C.eye); l.set(x, y, C.eyeL); }   // olhinho quadrado 3x3 com brilho
+// Olhos: caixa de 3x3 a partir de (x, y) no estilo claw (2 de largura no outro). Expressões: open, blink, closed, squint (concentrado),
+// happy (^), wide (arregalado), star (empolgado), heart (apaixonado), x (tonto), sad (caído).
+function eye(l, x, y, k, i = 0) {
+  const w = CLAW ? 2 : 1;   // largura - 1
+  if (k === 'open' && CLAW) { rect(l, x, y, x + 2, y + 2, C.eye); l.set(x, y, C.eyeL); }
   else if (k === 'open') { rect(l, x, y - 1, x + 1, y + 2, C.eye); l.set(x, y - 1, C.eyeL); l.set(x, y, C.eyeL); rect(l, x, y + 2, x + 1, y + 2, C.eyeD); l.set(x, y + 2, C.eye); }
-  else if (k === 'wide') { rect(l, x, y - 2, x + 1, y + 2, C.eye); rect(l, x, y - 2, x + 1, y - 2, C.eyeL); l.set(x, y - 1, C.eyeL); }
-  else if (k === 'blink') rect(l, x, y + 2, x + 1, y + 2, C.eye);
-  else if (k === 'closed') rect(l, x, y + 2, x + 1, y + 2, C.eyeD);
-  else if (k === 'squint') rect(l, x, y + 1, x + 1, y + 2, C.eye);
+  else if (k === 'wide') { rect(l, x, y - 1, x + w, y + 2, C.eye); rect(l, x, y - 1, x + w, y - 1, C.eyeL); l.set(x, y, C.eyeL); }
+  else if (k === 'blink') rect(l, x, y + 2, x + w, y + 2, C.eye);
+  else if (k === 'closed') rect(l, x, y + 2, x + w, y + 2, C.eyeD);
+  else if (k === 'squint') rect(l, x, y + 1, x + w, y + 2, C.eye);
+  else if (k === 'happy' && CLAW) { l.set(x, y + 2, C.eye); l.set(x + 1, y + 1, C.eye); l.set(x + 2, y + 2, C.eye); }
   else if (k === 'happy') { l.set(x - 1, y + 2, C.eye); rect(l, x, y + 1, x + 1, y + 1, C.eye); l.set(x + 2, y + 2, C.eye); }
+  else if (k === 'star') { l.set(x + 1, y, C.ambL); rect(l, x, y + 1, x + 2, y + 1, C.ambL); l.set(x + 1, y + 2, C.ambL); l.set(x + 1, y + 1, C.white); }
+  else if (k === 'heart') { l.set(x, y, C.heart); l.set(x + 2, y, C.heart); rect(l, x, y + 1, x + 2, y + 1, C.heart); l.set(x + 1, y + 2, C.heart); l.set(x, y, C.heartL); }
+  else if (k === 'x') { l.set(x, y, C.eye); l.set(x + 2, y, C.eye); l.set(x + 1, y + 1, C.eye); l.set(x, y + 2, C.eye); l.set(x + 2, y + 2, C.eye); }
+  else if (k === 'sad') { rect(l, x, y + 1, x + w, y + 2, C.eye); l.set(i ? x : x + w, y + 1, C.eyeL); }
+}
+// Sobrancelhas (cinza-claro, logo acima dos olhos): angry (franzidas), sad (caídas), up (uma desconfiada, outra erguida)
+function brow(l, x, y, k, i) {
+  const c = C.shirtD, pts = {
+    angry: i ? [[0, -1], [1, -2], [2, -2]] : [[0, -2], [1, -2], [2, -1]],
+    sad: i ? [[0, -2], [1, -2], [2, -1]] : [[0, -1], [1, -2], [2, -2]],
+    up: i ? [[0, -2], [1, -3], [2, -2]] : [[0, -1], [1, -1], [2, -1]],
+  }[k];
+  pts?.forEach(([dx, dy]) => l.set(x + dx, y + dy, c));
 }
 
 const BOW = { L: C.ambL, A: C.amb, K: C.ambD, D: C.ambD };
@@ -176,13 +195,20 @@ function drawFace(l, p, g) {
   (side ? [[1, -4], [6, -4]] : [[-4, -4], [3, -4]]).forEach(([x, y], i) => {
     const [ex, ey] = r(g.L(x + p.look[0], y + p.look[1])), [cx, cy] = r(g.L(x, y));
     const bl = i ? cx + 2 : cx - 2; if (!CLAW) { l.set(bl, cy + 3, C.blush); l.set(bl + (i ? -1 : 1), cy + 3, C.blush); }   // bochechas
-    eye(l, ex, ey, kinds[i]);
+    eye(l, ex, ey, kinds[i], i);
+    if (p.brows) brow(l, ex, ey, p.brows, i);
   });
   const [tx, ty] = r(g.L(side ? 5 : 0, 5));
   stamp(l, tx - 2, ty, ['LA.LA', 'AAKAA', 'DD.DD'], ch => BOW[ch]);   // gravata-borboleta
   if (!p.mouth) return;
   const [mx, my] = r(g.L(side ? 4 : 0, 0));
-  if (p.mouth === 'smile') { l.set(mx - 1, my, C.b3); l.set(mx, my + 1, C.b3); l.set(mx + 1, my, C.b3); }
+  const m = (pts, c = C.b3) => pts.forEach(([dx, dy]) => l.set(mx + dx, my + dy, c));
+  if (p.mouth === 'smile') m([[-1, 0], [0, 1], [1, 0]]);
+  else if (p.mouth === 'grin') { m([[-2, 0], [2, 0]]); rect(l, mx - 1, my + 1, mx + 1, my + 1, C.white); m([[-1, 2], [0, 2], [1, 2]], C.pink); }
+  else if (p.mouth === 'flat') m([[-1, 1], [0, 1], [1, 1]]);
+  else if (p.mouth === 'frown') m([[-1, 1], [0, 0], [1, 1]]);
+  else if (p.mouth === 'wavy') m([[-2, 1], [-1, 0], [0, 1], [1, 0], [2, 1]]);
+  else if (p.mouth === 'tongue') { m([[-1, 0], [0, 0], [1, 0]]); m([[1, 1]], C.pink); }
   else { rect(l, mx - 1, my, mx, my, C.out); rect(l, mx - 1, my + 1, mx, my + 1, C.pink); }
 }
 
@@ -227,7 +253,7 @@ function render(pose) {
   p.props.forEach(pr => part(pr));
   if (p.hatHand) part(l => { const [x, y] = handPos(p, g, 1); drawHat(l, x, y, p.hatHand.rot, HAT_GRIP); });
   [0, 1].forEach(i => { if (!p.behind[i] && !CLAW) part(l => drawArm(l, p, g, i)); });
-  p.fx.forEach(f => part(f));
+  [...p.fx, ...(p.fx2 || [])].forEach(f => part(f));
   return frame;
 }
 
@@ -238,7 +264,12 @@ const laptop = f => l => {
   rect(l, 38, 45, 41, 45, C.keyGlow);                                 // luz da tela no teclado
   for (const [x, y] of linePts(42, 44, 44, 34)) { l.set(x, y, (y + f) % 4 === 0 ? C.scrL : C.scr); l.set(x + 1, y, C.lapD); }   // tampa: tela virada para ele
 };
+const HEART = ['.#.#.', '#####', '.###.', '..#..'], ANGER = ['.#.#.', '##.##', '.....', '##.##', '.#.#.'], ANGER_S = ['#.#', '...', '#.#'];
 const FX = {
+  mark: (ch, x, y, c = C.white) => l => stamp(l, x, y, FONT[ch], c),
+  heart: (x, y) => l => { stamp(l, x, y, HEART, C.heart); l.set(x + 1, y, C.heartL); },
+  anger: (x, y, big) => l => stamp(l, x, y, big ? ANGER : ANGER_S, C.anger),
+  tear: (x, y) => l => { l.set(x, y, C.sweat); rect(l, x, y + 1, x, y + 1, C.sweat); l.set(x, y + 1, C.white); },
   dots: n => l => [[36, 12], [40, 12], [44, 12]].slice(0, n).forEach(([x, y]) => rect(l, x, y, x + 1, y + 1, C.white)),
   glyph: (ch, x, y, c) => l => stamp(l, x, y, FONT[ch], c),
   z: (x, y, big) => l => stamp(l, x, y, big ? Z5 : Z4, C.white),
@@ -303,6 +334,17 @@ ANIM.think = { nome: 'pensar', fps: 6, loop: true, frames: [0, 1, 2, 3, 4, 5, 6,
   const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
   const sit = { by: 4, ry: -0.5, rx: 0.5 };
   const GLYPHS = [[0, '<', C.scr], [8, '/', C.amb], [16, '>', C.scr], [32, '{', C.amb], [40, '}', C.scr]];
+  // A cara muda enquanto digita: concentrado de língua de fora, contente quando o código sai, confuso na pausa, "aha!", determinado, Enter com estrelas.
+  const typingFace = f => {
+    if (f < 12) return { eyes: 'squint', mouth: 'tongue' };
+    if (f < 20) return { eyes: 'happy', mouth: 'smile' };
+    if (f < 24) return { eyes: f === 22 ? 'blink' : 'open' };
+    if (f < 30) return { eyes: ['squint', 'open'], brows: 'up', mouth: 'wavy', fx2: [FX.mark('?', 39, 20 - (f % 2))] };
+    if (f < 34) return { eyes: 'wide', mouth: 'o', fx2: [FX.mark('!', 40, 19)] };
+    if (f < 44) return { eyes: 'squint', brows: 'angry', mouth: 'flat' };
+    if (f === 44) return { eyes: 'squint', brows: 'angry', mouth: 'grin' };
+    return { eyes: f === 45 ? 'star' : 'happy', mouth: 'grin' };
+  };
   ANIM.notebook = { nome: 'digitar', fps: 12, loop: true, frames: Array.from({ length: 48 }, (_, f) => {
     const pause = f >= 24 && f < 30;
     let L = [34, 42], R = [38, 42], fx = [];
@@ -315,7 +357,7 @@ ANIM.think = { nome: 'pensar', fps: 6, loop: true, frames: [0, 1, 2, 3, 4, 5, 6,
     }
     for (const [t0, ch, c] of GLYPHS) { const age = f - t0; if (age >= 0 && age < 7) fx.push(FX.glyph(ch, 36 + (age >= 3 ? 1 : 0), 32 - age, c)); }
     return { ...sit, tail: 78, feet: [[5, 0], [4, 0]], glow: true, behind: [true, false], handsW: [L, R], props: [laptop(f)], fx,
-      look: pause ? [1, 0] : [1, 1], eyes: f === 9 || f === 37 || f === 27 ? 'blink' : 'open', hat: { dy: f === 45 ? -1 : 0 } };
+      look: pause ? [1, 0] : [1, 1], ...typingFace(f), hat: { dy: f === 45 ? -1 : f >= 30 && f < 34 ? -2 : 0 } };
   }) };
 }
 
@@ -442,7 +484,61 @@ function previewSeq(name) {
 }
 
 /* ---------- Saída ---------- */
-const ORDER = ['idle', 'walk', 'run', 'jump', 'think', 'notebook', 'wave', 'tiphat', 'drag', 'sleep'];
+/* ---------- Expressões para ocasiões (de frente, para a cara aparecer inteira) ---------- */
+{ // feliz: tarefa concluída. Pulinhos, braços para cima, olhos de estrela e brilhos
+  const BY = [0, -2, -3, -2, 0, 1, 0, 0];
+  ANIM.happy = { nome: 'feliz', fps: 10, loop: true, frames: BY.map((by, i) => ({
+    view: 'front', by, ...(by > 0 ? { rx: 1, ry: -1 } : {}), feet: [[0, Math.min(0, by)], [0, Math.min(0, by)]],
+    eyes: i % 4 < 2 ? 'star' : 'happy', mouth: 'grin', hands: [[-11, by < 0 ? -9 : -4], [11, by < 0 ? -9 : -4]], hat: { dy: lag(BY, i) },
+    fx: [FX.spark(...[[8, 18], [40, 14], [10, 10], [38, 22]][i % 4]), FX.spark(...[[40, 20], [9, 14], [39, 10], [8, 22]][i % 4])],
+  })) };
+}
+{ // triste: deu erro. Murcho, sobrancelhas caídas, lágrima escorrendo
+  const K = [0, 0, 1, 1, 1, 1, 0, 0];
+  ANIM.sad = { nome: 'triste', fps: 6, loop: true, frames: K.map((k, i) => ({
+    view: 'front', ...sq(1 + k), eyes: 'sad', brows: 'sad', mouth: 'frown', look: [0, 1], hands: [[-10, 7], [10, 7]], hat: { dy: 1, rot: -4 },
+    fx: [FX.tear(19, 36 + i)],
+  })) };
+}
+{ // bravo: treme, sobrancelhas franzidas, marca de raiva pulsando
+  const BX = [-1, 1, -1, 1, 0, 1, -1, 0];
+  ANIM.angry = { nome: 'bravo', fps: 12, loop: true, frames: BX.map((bx, i) => ({
+    view: 'front', bx, eyes: 'squint', brows: 'angry', mouth: 'frown', hands: [[-11, 2 + (i % 2)], [11, 2 + ((i + 1) % 2)]], hat: { dy: i % 2 ? -1 : 0 },
+    fx: [FX.anger(35, 20, i % 4 < 2)],
+  })) };
+}
+// surpreso: arregala, a cartola salta, "!"
+ANIM.surprised = { nome: 'surpreso', fps: 8, loop: true, frames: [
+  { view: 'front' },
+  { view: 'front', ...sq(1), eyes: 'squint' },
+  { view: 'front', by: -1, eyes: 'wide', mouth: 'o', hands: [[-11, -6], [11, -6]], hat: { dy: -5, rot: -6 }, fx: [FX.mark('!', 37, 14)] },
+  { view: 'front', by: -1, eyes: 'wide', mouth: 'o', hands: [[-11, -6], [11, -6]], hat: { dy: -4, rot: -3 }, fx: [FX.mark('!', 37, 13)] },
+  { view: 'front', eyes: 'wide', mouth: 'o', hands: [[-11, -3], [11, -3]], hat: { dy: -1 }, fx: [FX.mark('!', 37, 13)] },
+  { view: 'front', eyes: 'wide', mouth: 'o', hat: { dy: 0 } },
+  { view: 'front', eyes: 'blink' },
+  { view: 'front' },
+] };
+{ // confuso: inclina a cabeça de um lado para o outro, "?" balançando
+  const LEAN = [0, -3, -5, -5, -3, 0, 0, 0];
+  ANIM.confused = { nome: 'confuso', fps: 6, loop: true, frames: LEAN.map((lean, i) => ({
+    view: 'front', lean, eyes: ['squint', 'open'], brows: 'up', mouth: 'wavy', hands: [[-10, 5], [9, -2]],
+    fx: [FX.mark('?', 36, 14 - (i % 2))],
+  })) };
+}
+// apaixonado: olhos de coração, corações subindo
+ANIM.love = { nome: 'apaixonado', fps: 8, loop: true, frames: [0, 1, 2, 3, 4, 5, 6, 7].map(i => ({
+  view: 'front', ...sq(i % 4 < 2 ? 0 : 1), eyes: 'heart', mouth: 'smile', hands: [[-8, 3], [8, 3]],
+  fx: [FX.heart(34 + (i > 3 ? 1 : 0), 26 - i * 2), FX.heart(8 - (((i + 4) % 8) > 3 ? 1 : 0), 26 - ((i + 4) % 8) * 2)],
+})) };
+{ // tonto: olhos em X, balança, estrelinhas girando em volta da cartola
+  const SW = [6, 4, 0, -4, -6, -4, 0, 4];
+  ANIM.dizzy = { nome: 'tonto', fps: 10, loop: true, frames: SW.map((s, i) => ({
+    view: 'front', lean: s, eyes: 'x', mouth: 'wavy', hands: [[-11, 4 - (i % 2) * 2], [11, 2 + (i % 2) * 2]], hat: { rot: s * 1.5 },
+    fx: [0, 1, 2].map(k => { const a = (i / 8 + k / 3) * 2 * Math.PI; return FX.spark(24 + Math.cos(a) * 13, 15 + Math.sin(a) * 3); }),
+  })) };
+}
+
+const ORDER = ['idle', 'walk', 'run', 'jump', 'think', 'notebook', 'wave', 'tiphat', 'drag', 'sleep', 'happy', 'sad', 'angry', 'surprised', 'confused', 'love', 'dizzy'];
 for (const d of ['sprites', 'folhas', 'previa']) { rmSync(path.join(DIR, d), { recursive: true, force: true }); mkdirSync(path.join(DIR, d), { recursive: true }); }
 const LAYERS = {};
 for (const name of ORDER) {
