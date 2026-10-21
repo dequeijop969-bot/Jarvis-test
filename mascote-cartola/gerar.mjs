@@ -161,7 +161,7 @@ function drawTail(l, p, g, k) {
 }
 
 function eye(l, x, y, k) {
-  if (k === 'open' && CLAW) rect(l, x, y, x + 1, y + 1, C.eye);   // olhinho quadrado
+  if (k === 'open' && CLAW) { rect(l, x, y, x + 2, y + 2, C.eye); l.set(x, y, C.eyeL); }   // olhinho quadrado 3x3 com brilho
   else if (k === 'open') { rect(l, x, y - 1, x + 1, y + 2, C.eye); l.set(x, y - 1, C.eyeL); l.set(x, y, C.eyeL); rect(l, x, y + 2, x + 1, y + 2, C.eyeD); l.set(x, y + 2, C.eye); }
   else if (k === 'wide') { rect(l, x, y - 2, x + 1, y + 2, C.eye); rect(l, x, y - 2, x + 1, y - 2, C.eyeL); l.set(x, y - 1, C.eyeL); }
   else if (k === 'blink') rect(l, x, y + 2, x + 1, y + 2, C.eye);
