@@ -97,7 +97,8 @@ function drawHat(l, wx, wy, rot, pivot) {
    Pose: view 'side' (olhando para a direita, o site espelha para a esquerda) ou 'front'; bx/by deslocam o corpo; rx/ry achatam/esticam;
    lean inclina (graus, + = para frente) em torno de baixo do corpo (ou do topo com pivot 'top'); hands em coordenadas do corpo
    (relativas ao centro; handsW em pixels do quadro); feet: deslocamento dos pés no chão (feetLocal: pés presos ao corpo, pendurado). */
-const BASE = { cx: 24, cy: 32, rx: 9, ry: 10 };
+const BASE = { cx: 24, cy: 32, rx: 9, ry: 10 };   // medidas de referência das poses (rosto, mãos, pés são dados nelas)
+const SHAPE = { rx: 11, ry: 8, n: 6 };              // o corpo de verdade: um bloco largo de cantos arredondados (superelipse)
 const DEF = {
   view: 'side', bx: 0, by: 0, rx: 0, ry: 0, lean: 0, pivot: 'bottom', eyes: 'open', look: [0, 0], mouth: null,
   feet: [[0, 0], [0, 0]], feetLocal: null, hands: [[-10, 5], [10, 5]], handsW: null, behind: [false, false],
@@ -105,7 +106,7 @@ const DEF = {
 };
 
 function geo(p) {
-  const RX = BASE.rx + p.rx, RY = BASE.ry + p.ry, cx = BASE.cx + p.bx, cy = BASE.cy + p.by;
+  const RX = SHAPE.rx + p.rx, RY = SHAPE.ry + p.ry, cx = BASE.cx + p.bx, cy = BASE.cy + p.by;
   const a = p.lean * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
   const px = cx, py = p.pivot === 'top' ? cy - RY : cy + RY;
   return {
@@ -118,9 +119,10 @@ function geo(p) {
 function drawBody(l, p, g) {
   const lx = -0.55, ly = -0.83, side = p.view === 'side';   // luz de cima à esquerda
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const [ux, uy] = g.inv(x, y), nx = ux / (g.RX + 0.5), ny = uy / (g.RY + 0.5), r = Math.hypot(nx, ny);
+    const [ux, uy] = g.inv(x, y), nx = ux / (g.RX + 0.5), ny = uy / (g.RY + 0.5), N = SHAPE.n, r = (Math.abs(nx) ** N + Math.abs(ny) ** N) ** (1 / N);
     if (r > 1) continue;
-    const wx = (nx * Math.cos(g.a) - ny * Math.sin(g.a)) / (r || 1), wy = (nx * Math.sin(g.a) + ny * Math.cos(g.a)) / (r || 1), d = wx * lx + wy * ly;
+    const gx = Math.sign(nx) * Math.abs(nx) ** (N - 1), gy = Math.sign(ny) * Math.abs(ny) ** (N - 1), gl = Math.hypot(gx, gy) || 1;   // normal da superelipse
+    const wx = (gx * Math.cos(g.a) - gy * Math.sin(g.a)) / gl, wy = (gx * Math.sin(g.a) + gy * Math.cos(g.a)) / gl, d = wx * lx + wy * ly;
     const chk = (x + y) % 2 === 0;   // pontilhado entre os tons
     let c = C.b0;
     if (r > 0.8 && d > 0.5) c = C.b3;
