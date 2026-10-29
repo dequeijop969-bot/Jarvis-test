@@ -29,7 +29,8 @@ const C = {
   scr: [95, 212, 255], scrL: [200, 244, 255],
   glow: [34, 72, 90], glowL: [52, 112, 138],                                        // luz da tela no corpo
   white: [241, 239, 233], dust: [118, 120, 132], dustD: [74, 76, 88], pink: [196, 84, 96],
-  y0: [246, 196, 40], y1: [200, 146, 22], y2: [255, 226, 112], bl0: [42, 92, 180], bl1: [24, 56, 122], bl2: [98, 148, 228], blV: [20, 44, 100],   // uniforme heart: [255, 105, 140], heartL: [255, 190, 205], anger: [235, 72, 72], sweat: [150, 220, 255],
+  y0: [246, 196, 40], y1: [200, 146, 22], y2: [255, 226, 112], bl0: [42, 92, 180], bl1: [24, 56, 122], bl2: [98, 148, 228], blV: [20, 44, 100],   // uniforme
+  heart: [255, 105, 140], heartL: [255, 190, 205], anger: [235, 72, 72], sweat: [150, 220, 255],
 };
 
 /* ---------- Camadas: cada parte (perna, corpo, cartola, braço...) ganha contorno próprio antes de ir para o quadro ---------- */
