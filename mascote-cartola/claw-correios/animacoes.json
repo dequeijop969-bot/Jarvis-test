@@ -1,0 +1,108 @@
+{
+  "w": 48,
+  "h": 48,
+  "anims": {
+    "idle": {
+      "n": 8,
+      "fps": 6,
+      "loop": true,
+      "nome": "parado"
+    },
+    "walk": {
+      "n": 8,
+      "fps": 10,
+      "loop": true,
+      "nome": "andar"
+    },
+    "run": {
+      "n": 8,
+      "fps": 14,
+      "loop": true,
+      "nome": "correr"
+    },
+    "jump": {
+      "n": 8,
+      "fps": 14,
+      "loop": false,
+      "nome": "pular"
+    },
+    "think": {
+      "n": 8,
+      "fps": 6,
+      "loop": true,
+      "nome": "pensar"
+    },
+    "notebook": {
+      "n": 48,
+      "fps": 12,
+      "loop": true,
+      "nome": "digitar"
+    },
+    "wave": {
+      "n": 8,
+      "fps": 8,
+      "loop": true,
+      "nome": "acenar"
+    },
+    "tiphat": {
+      "n": 12,
+      "fps": 8,
+      "loop": false,
+      "nome": "cumprimentar"
+    },
+    "drag": {
+      "n": 8,
+      "fps": 10,
+      "loop": true,
+      "nome": "arrastado"
+    },
+    "sleep": {
+      "n": 8,
+      "fps": 4,
+      "loop": true,
+      "nome": "dormir"
+    },
+    "happy": {
+      "n": 8,
+      "fps": 10,
+      "loop": true,
+      "nome": "feliz"
+    },
+    "sad": {
+      "n": 8,
+      "fps": 6,
+      "loop": true,
+      "nome": "triste"
+    },
+    "angry": {
+      "n": 8,
+      "fps": 12,
+      "loop": true,
+      "nome": "bravo"
+    },
+    "surprised": {
+      "n": 8,
+      "fps": 8,
+      "loop": true,
+      "nome": "surpreso"
+    },
+    "confused": {
+      "n": 8,
+      "fps": 6,
+      "loop": true,
+      "nome": "confuso"
+    },
+    "love": {
+      "n": 8,
+      "fps": 8,
+      "loop": true,
+      "nome": "apaixonado"
+    },
+    "dizzy": {
+      "n": 8,
+      "fps": 10,
+      "loop": true,
+      "nome": "tonto"
+    }
+  }
+}

@@ -40,3 +40,9 @@ Tudo é desenhado por código, sem dependências: edite `gerar.mjs` (paleta, car
 ![vitrine claw](claw/previa/vitrine.gif)
 
 Mesmas animações e nomes, em `claw/`: tocos retangulares no lugar dos braços com luva, olhinhos quadrados (3x3, com brilho), sem bochechas, peito branco e caudas (ficam a cartola e a gravata). Gere com `node mascote-cartola/gerar.mjs --estilo=claw`.
+
+## Versão carteiro (Correios)
+
+![vitrine carteiro](claw-correios/previa/vitrine.gif)
+
+O estilo claw com uniforme de carteiro, em `claw-correios/`: boné azul de faixa amarela (o "cumprimentar" ergue o boné), polo amarela de gola azul com mangas amarelas e bolsa azul a tiracolo com uma carta aparecendo. Só as cores, sem logotipo. Gere com `node mascote-cartola/gerar.mjs --estilo=claw --roupa=correios` (sem `--estilo=claw` sai a versão com luvas, em `correios/`).

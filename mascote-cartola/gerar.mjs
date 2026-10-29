@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url';
 
 // --estilo=claw: versão mais fiel ao Claw'd (tocos no lugar dos braços, olhos quadrados, sem bochechas, peito branco e caudas), na pasta claw/
 const CLAW = process.argv.includes('--estilo=claw');
-const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), CLAW ? 'claw' : '');
+// --roupa=correios: uniforme de carteiro (boné azul, polo amarela de gola azul, bolsa a tiracolo), na pasta correios/ (ou claw-correios/)
+const CORREIOS = process.argv.includes('--roupa=correios');
+const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), [CLAW && 'claw', CORREIOS && 'correios'].filter(Boolean).join('-'));
 const W = 48, H = 48;
 
 /* ---------- Paleta (grafite, âmbar e ciano do app) ---------- */
@@ -26,7 +28,8 @@ const C = {
   lap: [96, 100, 114], lapL: [150, 154, 168], lapD: [62, 65, 76], keyGlow: [150, 214, 232],
   scr: [95, 212, 255], scrL: [200, 244, 255],
   glow: [34, 72, 90], glowL: [52, 112, 138],                                        // luz da tela no corpo
-  white: [241, 239, 233], dust: [118, 120, 132], dustD: [74, 76, 88], pink: [196, 84, 96], heart: [255, 105, 140], heartL: [255, 190, 205], anger: [235, 72, 72], sweat: [150, 220, 255],
+  white: [241, 239, 233], dust: [118, 120, 132], dustD: [74, 76, 88], pink: [196, 84, 96],
+  y0: [246, 196, 40], y1: [200, 146, 22], y2: [255, 226, 112], bl0: [42, 92, 180], bl1: [24, 56, 122], bl2: [98, 148, 228], blV: [20, 44, 100],   // uniforme heart: [255, 105, 140], heartL: [255, 190, 205], anger: [235, 72, 72], sweat: [150, 220, 255],
 };
 
 /* ---------- Camadas: cada parte (perna, corpo, cartola, braço...) ganha contorno próprio antes de ir para o quadro ---------- */
@@ -86,14 +89,20 @@ const HAT = [
 ];
 if (HAT.some(r => r.length !== 17)) throw new Error('cartola torta');
 const HATC = { W: C.ambL, k: C.ambD, a: C.h2, A: C.h3, o: C.h0, b: C.h1, Y: C.ambL, y: C.amb, d: C.ambD };
-const HAT_HEAD = [8, 11], HAT_GRIP = [14, 12];                 // apoio na cabeça; onde a luva segura (logo abaixo da aba, à direita)
-function drawHat(l, wx, wy, rot, pivot) {
+// Boné do carteiro: de lado (aba para a frente) e de frente (aba larga embaixo); 17x7, apoio em (8,6)
+const CAP_S = ['.......Y.........', '....LLBBBBBD.....', '...LBBBBBBBBD....', '...LBBBBBBBBBD...', '...YYYYYYYYYYy...', '...BBBBBBBBBBVVVV', '...DDDDDDDDDDVVV.'];
+const CAP_F = ['........Y........', '....LLBBBBBBD....', '...LBBBBBBBBBD...', '...LBBBBBBBBBD...', '...YYYYYYYYYYy...', '..VVVVVVVVVVVVV..', '...DDDDDDDDDDD...'];
+if ([...CAP_S, ...CAP_F].some(r => r.length !== 17)) throw new Error('boné torto');
+const CAPC = { L: C.bl2, B: C.bl0, D: C.bl1, V: C.blV, Y: C.y0, y: C.y1 };
+const HAT_HEAD = CORREIOS ? [8, 6] : [8, 11], HAT_GRIP = CORREIOS ? [14, 7] : [14, 12];   // apoio na cabeça; onde a mão segura (logo abaixo da aba, à direita)
+function drawHat(l, wx, wy, rot, pivot, view = 'side') {
+  const grid = CORREIOS ? (view === 'front' ? CAP_F : CAP_S) : HAT, colors = CORREIOS ? CAPC : HATC;
   wx = Math.round(wx); wy = Math.round(wy);
   const a = rot * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
   for (let y = wy - 24; y <= wy + 24; y++) for (let x = wx - 24; x <= wx + 24; x++) {
     const dx = x - wx, dy = y - wy;
-    const ch = HAT[Math.round(-dx * sin + dy * cos + pivot[1])]?.[Math.round(dx * cos + dy * sin + pivot[0])];
-    if (ch && ch !== '.') l.set(x, y, HATC[ch]);
+    const ch = grid[Math.round(-dx * sin + dy * cos + pivot[1])]?.[Math.round(dx * cos + dy * sin + pivot[0])];
+    if (ch && ch !== '.') l.set(x, y, colors[ch]);
   }
 }
 
@@ -141,6 +150,13 @@ function drawBody(l, p, g) {
       const bx = ux * BASE.rx / g.RX - (side ? 4 : 0), by = uy * BASE.ry / g.RY;
       if (by >= 3 && by <= 10 && r < (side ? 0.97 : 0.9) && Math.abs(bx) <= 0.8 + (by - 3) * 0.45) c = bx > 0.6 + (by - 3) * 0.3 || r > 0.8 ? C.shirtD : C.shirt;
       if (Math.abs(bx) < 0.5 && Math.abs(by - 9) < 0.5) c = C.b1;                    // botão
+    }
+    if (CORREIOS) {   // polo amarela da metade para baixo, gola azul
+      const bx = ux * BASE.rx / g.RX - (side ? 4 : 0), by = uy * BASE.ry / g.RY;
+      if (by >= 1) {
+        c = r > 0.82 && d > 0.45 ? C.y2 : d > 0.3 && r > 0.5 ? (chk || r > 0.7 ? C.y2 : C.y0) : d < -0.4 && r > 0.6 ? C.y1 : C.y0;
+        if (by < 2.2) c = C.bl0;
+      }
     }
     if (p.glow && r > 0.62 && wx > 0.55 && wy < 0.6) c = r > 0.86 ? C.glowL : C.glow;
     l.set(x, y, c);
@@ -199,7 +215,7 @@ function drawFace(l, p, g) {
     if (p.brows) brow(l, ex, ey, p.brows, i);
   });
   const [tx, ty] = r(g.L(side ? 5 : 0, 5));
-  stamp(l, tx - 2, ty, ['LA.LA', 'AAKAA', 'DD.DD'], ch => BOW[ch]);   // gravata-borboleta
+  if (!CORREIOS) stamp(l, tx - 2, ty, ['LA.LA', 'AAKAA', 'DD.DD'], ch => BOW[ch]);   // gravata-borboleta
   if (!p.mouth) return;
   const [mx, my] = r(g.L(side ? 4 : 0, 0));
   const m = (pts, c = C.b3) => pts.forEach(([dx, dy]) => l.set(mx + dx, my + dy, c));
@@ -231,15 +247,24 @@ function handPos(p, g, i) {
 function drawArm(l, p, g, i) {
   if (CLAW) {   // toco retangular, como o do Claw'd
     const [ex, ey] = g.L(i ? 8 : -8, 2), [hx, hy] = handPos(p, g, i);
-    for (const [x, y] of linePts(ex, ey, hx, hy)) rect(l, x - 1, y - 2, x + 2, y + 1, C.b0);
+    for (const [x, y] of linePts(ex, ey, hx, hy)) rect(l, x - 1, y - 2, x + 2, y + 1, CORREIOS ? C.y0 : C.b0);   // de carteiro, o toco é a manga amarela
     return;
   }
   const [sx, sy] = g.L(i ? 7 : -7, 2), [hx, hy] = handPos(p, g, i).map(Math.round);
   const pts = linePts(sx, sy, hx, hy), cuff = pts.filter(([x, y]) => Math.abs(x - hx) > 1 || Math.abs(y - hy) > 1).pop();
-  line(l, sx, sy, hx, hy, i ? C.b0 : C.b1);
+  line(l, sx, sy, hx, hy, CORREIOS ? (i ? C.y0 : C.y1) : i ? C.b0 : C.b1);
   if (cuff) l.set(cuff[0], cuff[1], C.shirt);   // punho branco
   rect(l, hx - 1, hy - 1, hx + 1, hy + 1, C.glove);
   l.set(hx + 1, hy, C.gloveD); l.set(hx + 1, hy + 1, C.gloveD); l.set(hx, hy + 1, C.gloveD);
+}
+
+// Bolsa de carteiro: alça cruzando o peito, bolsa azul de aba amarela na altura do quadril, uma carta aparecendo
+function drawStrap(l, p, g) { const [ax, ay] = g.L(-9, 3), [bx, by] = g.L(6, 6); line(l, ax, ay, bx, by, C.bl1); }
+function drawBag(l, p, g) {
+  const [cx, cy] = g.L(7, 8).map(Math.round);
+  rect(l, cx - 1, cy - 3, cx, cy - 2, C.white); l.set(cx, cy - 3, C.pink);   // carta com selo
+  rect(l, cx - 2, cy - 1, cx + 2, cy + 2, C.bl0); rect(l, cx - 2, cy + 2, cx + 2, cy + 2, C.bl1);
+  rect(l, cx - 2, cy - 1, cx + 2, cy - 1, C.y0); l.set(cx, cy, C.y1);   // aba e fecho
 }
 
 function render(pose) {
@@ -249,9 +274,10 @@ function render(pose) {
   [0, 2, 1, 3].forEach(k => part(l => drawLeg(l, p, g, k)));   // par de trás primeiro
   if (p.view === 'side' && !CLAW) { part(l => drawTail(l, p, g, 1)); part(l => drawTail(l, p, g, 0)); }
   part(l => { drawBody(l, p, g); drawFace(l, p, g); });
-  if (!p.hatHand) part(l => { const [x, y] = g.L(0, -10); drawHat(l, x + p.hat.dx, y + p.hat.dy, p.hat.rot + p.lean, HAT_HEAD); });
+  if (CORREIOS) { part(l => drawStrap(l, p, g)); part(l => drawBag(l, p, g)); }
+  if (!p.hatHand) part(l => { const [x, y] = g.L(0, -10); drawHat(l, x + p.hat.dx, y + p.hat.dy, p.hat.rot + p.lean, HAT_HEAD, p.view); });
   p.props.forEach(pr => part(pr));
-  if (p.hatHand) part(l => { const [x, y] = handPos(p, g, 1); drawHat(l, x, y, p.hatHand.rot, HAT_GRIP); });
+  if (p.hatHand) part(l => { const [x, y] = handPos(p, g, 1); drawHat(l, x, y, p.hatHand.rot, HAT_GRIP, p.view); });
   [0, 1].forEach(i => { if (!p.behind[i] && !CLAW) part(l => drawArm(l, p, g, i)); });
   [...p.fx, ...(p.fx2 || [])].forEach(f => part(f));
   return frame;
