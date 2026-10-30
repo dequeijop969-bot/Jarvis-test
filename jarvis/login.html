@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0c0f">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<title>Entrar · JARVIS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fragment+Mono&family=Montserrat:wght@400;500;600;700;800&family=Vollkorn:ital@1&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0c0f; --bg2:#14161a; --bg3:#1b1e23; --line:#262931; --line2:#33363f;
+  --text:#f1efe9; --mute:#a3a09a; --dim:#76736d; --acc:#f2b33d; --acc2:#ffc960; --ink:#16120a;
+  --teal:#5fb3a1; --code:#5fd4ff; --ok:#7cc9a4; --err:#ffb2a6;
+  --ease:cubic-bezier(.2,.8,.2,1); --mono:'Fragment Mono',ui-monospace,monospace; --serif:'Vollkorn',Georgia,serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;color:var(--text);background:var(--bg);font:400 16px/1.55 'Montserrat',system-ui,sans-serif;-webkit-font-smoothing:antialiased;color-scheme:dark}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--acc);outline-offset:3px;border-radius:8px}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* Split: cena 3D à esquerda, formulário à direita */
+.split{display:grid;grid-template-columns:1.1fr 1fr;min-height:100vh;min-height:100svh}
+.side{position:relative;overflow:hidden;isolation:isolate;border-right:1px solid var(--line);
+  background:radial-gradient(70% 60% at 40% 45%,color-mix(in oklab,var(--acc) 10%,transparent),transparent 70%),#08090b}
+.side .stage{position:absolute;inset:0;z-index:0}
+.side .stage canvas{width:100%!important;height:100%!important;display:block}
+.stage.no3d::before{content:'';position:absolute;left:50%;top:46%;width:min(58vmin,480px);aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;
+  background:radial-gradient(circle,var(--acc2) 0 7%,color-mix(in oklab,var(--acc) 55%,transparent) 12%,color-mix(in oklab,var(--acc) 14%,transparent) 32%,transparent 62%);box-shadow:0 0 120px -20px var(--acc)}
+.side::after{content:'';position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(180deg,#08090bcc 0,transparent 22%,transparent 58%,#08090bf2 100%)}
+.side .top,.side .bottom{position:absolute;left:clamp(24px,4vw,48px);right:clamp(24px,4vw,48px);z-index:2}
+.side .top{top:28px;display:flex;align-items:center;justify-content:space-between}
+.side .bottom{bottom:clamp(28px,5vw,52px)}
+.brand{display:inline-flex;align-items:center;gap:11px;font:400 14px var(--mono);letter-spacing:.34em;text-decoration:none}
+.brand b{color:var(--acc);font-weight:400}
+.brand i{width:10px;height:10px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 3px color-mix(in oklab,var(--acc) 22%,transparent),0 0 16px var(--acc)}
+.back{font:500 13px 'Montserrat';color:var(--mute);text-decoration:none;display:inline-flex;gap:6px;align-items:center}
+.back:hover{color:var(--text)}
+.quote{margin:0 0 22px;font:italic 400 clamp(28px,3.4vw,44px)/1.15 var(--serif);color:var(--text);max-width:520px;text-shadow:0 4px 30px #000}
+.quote span{color:var(--acc2)}
+.who{display:flex;align-items:center;gap:10px;font:500 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:26px}
+.who::before{content:'';width:26px;height:1px;background:var(--acc)}
+.pills{display:flex;flex-wrap:wrap;gap:8px}
+.pills span{display:inline-flex;align-items:center;gap:7px;font-size:13px;padding:7px 12px;border-radius:999px;border:1px solid #ffffff17;background:#0b0c0fa8;backdrop-filter:blur(8px);color:#d6d3cc}
+.pills span i{width:6px;height:6px;border-radius:50%;background:var(--c,var(--acc))}
+
+.main{display:grid;place-items:center;padding:40px clamp(20px,5vw,64px);position:relative;
+  background:radial-gradient(60% 40% at 100% 0,color-mix(in oklab,var(--acc) 7%,transparent),transparent 70%),var(--bg)}
+.box{width:min(420px,100%)}
+.box h1{margin:0 0 6px;font:800 34px/1.1 'Montserrat';letter-spacing:-.03em}
+.box .sub{margin:0 0 26px;color:var(--mute);font-size:15px}
+.tabs{display:grid;grid-template-columns:1fr 1fr;padding:4px;border-radius:14px;border:1px solid var(--line);background:#101216;position:relative;margin-bottom:24px}
+.tabs button{position:relative;z-index:1;border:0;background:none;color:var(--mute);font:600 14px 'Montserrat';padding:10px;border-radius:10px;cursor:pointer;transition:color .25s}
+.tabs button[aria-selected=true]{color:var(--ink)}
+.tabs .th{position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:10px;background:linear-gradient(180deg,var(--acc2),var(--acc));box-shadow:0 6px 20px -8px var(--acc);transition:transform .35s var(--ease)}
+.tabs[data-t=up] .th{transform:translateX(100%)}
+.tabs[hidden]{display:none}
+form{display:grid;gap:14px}
+.f{display:grid;gap:7px}
+.f label{font:600 13px 'Montserrat';color:#d6d3cc;display:flex;justify-content:space-between}
+.f label small{font-weight:500;color:var(--dim)}
+.in{position:relative}
+.in input{width:100%;font:500 15.5px 'Montserrat';color:var(--text);background:#121418;border:1px solid var(--line2);border-radius:12px;padding:13px 14px;transition:border-color .2s,box-shadow .2s;outline:none}
+.in input::placeholder{color:#5d5a55}
+.in input:focus{border-color:var(--acc);box-shadow:0 0 0 4px color-mix(in oklab,var(--acc) 18%,transparent)}
+.in input[aria-invalid=true]{border-color:var(--err)}
+.in .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:38px;height:38px;border:0;border-radius:9px;background:none;color:var(--mute);cursor:pointer;display:grid;place-items:center}
+.in .eye:hover{color:var(--text);background:#ffffff0a}
+.in input[type=password],.in input.pw{padding-right:50px}
+.meter{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:2px}
+.meter i{height:4px;border-radius:3px;background:var(--line2);transition:background .3s}
+.meter[data-s="1"] i:nth-child(-n+1){background:var(--err)}
+.meter[data-s="2"] i:nth-child(-n+2){background:var(--acc)}
+.meter[data-s="3"] i:nth-child(-n+3){background:var(--ok)}
+.meter[data-s="4"] i{background:var(--ok)}
+.hint{font-size:12.5px;color:var(--dim)}
+.only-up{display:none}
+form[data-t=up] .only-up{display:grid}
+form[data-t=up] small.only-up{display:inline}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;font:700 15.5px 'Montserrat';cursor:pointer;padding:14px 20px;border-radius:13px;border:1px solid var(--acc2);
+  color:var(--ink);background:linear-gradient(180deg,var(--acc2),var(--acc));box-shadow:inset 0 1px 0 #ffffff80,0 16px 36px -16px var(--acc);transition:transform .2s var(--ease),box-shadow .3s,opacity .2s;margin-top:4px}
+.btn:hover{transform:translateY(-1px);box-shadow:inset 0 1px 0 #ffffff80,0 20px 44px -14px var(--acc)}
+.btn:active{transform:scale(.98)}
+.btn[disabled]{opacity:.65;cursor:progress}
+.btn .spin{width:16px;height:16px;border-radius:50%;border:2px solid #16120a55;border-top-color:var(--ink);animation:sp .8s linear infinite;display:none}
+.btn[disabled] .spin{display:block}
+@keyframes sp{to{transform:rotate(360deg)}}
+.err{min-height:22px;margin:0;font-size:13.5px;color:var(--err)}
+.err.ok{color:var(--ok)}
+.note{margin-top:22px;padding:14px 16px;border-radius:14px;border:1px solid var(--line);background:#101216;display:flex;gap:12px;font-size:13.5px;color:var(--mute)}
+.note svg{color:var(--acc);margin-top:1px}
+.note a{color:var(--text)}
+.legal{margin-top:18px;font-size:12px;color:var(--dim);text-align:center}
+
+@media (max-width:900px){
+  .split{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .side{min-height:300px;border-right:0;border-bottom:1px solid var(--line)}
+  .side .quote{font-size:26px;margin-bottom:12px}
+  .side .who,.pills{display:none}
+  .main{padding-top:32px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-eyeoff" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 6a9.6 9.6 0 0 1 1.4-.1c6 0 9.5 6.1 9.5 6.1a16 16 0 0 1-2.6 3.3M6.6 7.4A16 16 0 0 0 2.5 12S6 18.5 12 18.5a9 9 0 0 0 4.4-1.1M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+  <symbol id="i-win" viewBox="0 0 24 24"><path d="M3 5.5l7.5-1v7H3zM12 4.3L21 3v8.5h-9zM3 12.5h7.5v7L3 18.5zM12 12.5h9V21l-9-1.3z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+</svg>
+
+<div class="split">
+  <aside class="side" aria-label="JARVIS">
+    <div class="stage" id="stage"></div>
+    <div class="top">
+      <a class="brand" href="/" aria-label="JARVIS, início"><i></i><span>J<b>A</b>RVIS</span></a>
+      <a class="back" href="/"><svg class="i" style="width:16px;height:16px"><use href="#i-left"/></svg>Voltar ao site</a>
+    </div>
+    <div class="bottom">
+      <p class="quote">"Às suas ordens, <span>senhor.</span> O trabalho braçal fica comigo."</p>
+      <div class="who">JARVIS · mordomo digital</div>
+      <div class="pills">
+        <span><i></i>Conversa por voz</span><span style="--c:var(--teal)"><i></i>Agenda e Gmail</span><span style="--c:var(--code)"><i></i>Jarvis Code no PC</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="box">
+      <h1 id="title">Bem-vindo de volta</h1>
+      <p class="sub" id="lead">Entre para baixar o JARVIS para Windows.</p>
+
+      <div class="tabs" id="tabs" role="tablist" data-t="in">
+        <i class="th" aria-hidden="true"></i>
+        <button type="button" role="tab" id="tIn" aria-selected="true" aria-controls="form">Entrar</button>
+        <button type="button" role="tab" id="tUp" aria-selected="false" aria-controls="form">Criar conta</button>
+      </div>
+
+      <form id="form" data-t="in" novalidate>
+        <div class="f only-up"><label for="name">Como devo chamá-lo?</label><div class="in"><input id="name" name="name" autocomplete="name" placeholder="Seu nome" maxlength="60"></div></div>
+        <div class="f"><label for="email">E-mail</label><div class="in"><input id="email" name="email" type="email" autocomplete="email" placeholder="voce@exemplo.com" required></div></div>
+        <div class="f">
+          <label for="password">Senha <small class="only-up">mín. 8 caracteres</small></label>
+          <div class="in"><input id="password" class="pw" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required minlength="8">
+            <button type="button" class="eye" id="eye" aria-label="Mostrar senha"><svg class="i"><use href="#i-eye"/></svg></button></div>
+          <div class="meter only-up" id="meter" data-s="0" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        </div>
+        <p class="err" id="err" role="alert"></p>
+        <button class="btn" id="go" type="submit"><span class="spin" aria-hidden="true"></span><span id="goTxt">Entrar</span></button>
+      </form>
+
+      <div class="note"><svg class="i"><use href="#i-win"/></svg><span>Depois de entrar você vai direto para o download do app para Windows.<span id="webNote"> Só quer conversar? <a href="/app">Use no navegador</a>, sem conta.</span></span></div>
+      <p class="legal">A conta fica guardada neste servidor, com a senha protegida (nunca em texto).</p>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
+<script src="/site3d.js" defer></script>
+<script>
+addEventListener('DOMContentLoaded', () => {
+  const stage = document.getElementById('stage');
+  try { window.JarvisScene ? JarvisScene(stage, { scale: .82, particles: 900, scroll: false }) : stage.classList.add('no3d'); } catch { stage.classList.add('no3d'); }
+});
+
+const $ = id => document.getElementById(id);
+// Site publicado: não existe versão web no servidor, então o convite para usar no navegador some.
+fetch('/api/health').then(r => r.json()).then(j => {
+  if (!j.site) return;
+  $('webNote').remove();
+  // Contas de cada pessoa ficam no Supabase; sem ele, só o dono entra e a aba "Criar conta" some.
+  if (j.signup) document.querySelector('.legal').textContent = 'A conta fica no Supabase, com a senha protegida (nunca em texto). Suas chaves de IA nunca saem do seu PC.';
+  else { if (mode === 'up') setMode('in'); tabs.hidden = true; }
+}).catch(() => {});
+const form = $('form'), tabs = $('tabs'), next = new URLSearchParams(location.search).get('next') || '/baixar';
+let mode = 'in';
+function setMode(m) {
+  mode = m; form.dataset.t = tabs.dataset.t = m;
+  $('tIn').setAttribute('aria-selected', String(m === 'in')); $('tUp').setAttribute('aria-selected', String(m === 'up'));
+  $('title').textContent = m === 'in' ? 'Bem-vindo de volta' : 'Crie sua conta';
+  $('lead').textContent = m === 'in' ? 'Entre para baixar o JARVIS para Windows.' : 'Leva 20 segundos. Depois é só baixar o app.';
+  $('goTxt').textContent = m === 'in' ? 'Entrar' : 'Criar conta e continuar';
+  $('password').autocomplete = m === 'in' ? 'current-password' : 'new-password';
+  $('err').textContent = ''; $('err').classList.remove('ok'); form.querySelectorAll('input').forEach(i => i.removeAttribute('aria-invalid'));
+  (m === 'up' ? $('name') : $('email')).focus();
+}
+$('tIn').onclick = () => setMode('in'); $('tUp').onclick = () => setMode('up');
+if (location.hash === '#criar') setMode('up');
+
+$('eye').onclick = () => {
+  const p = $('password'), show = p.type === 'password';
+  p.type = show ? 'text' : 'password';
+  $('eye').setAttribute('aria-label', show ? 'Esconder senha' : 'Mostrar senha');
+  $('eye').querySelector('use').setAttribute('href', show ? '#i-eyeoff' : '#i-eye');
+};
+// Força da senha (só uma dica visual; a regra de verdade é no servidor).
+$('password').addEventListener('input', e => {
+  const v = e.target.value; let s = 0;
+  if (v.length >= 8) s++; if (v.length >= 12) s++; if (/[A-Z]/.test(v) && /[a-z]/.test(v)) s++; if (/\d/.test(v) && /[^\w]/.test(v)) s++;
+  $('meter').dataset.s = v ? Math.max(1, s) : 0;
+});
+
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const body = { email: $('email').value.trim(), password: $('password').value, next };
+  if (mode === 'up') body.name = $('name').value.trim();
+  const bad = (id, msg) => { $(id).setAttribute('aria-invalid', 'true'); $(id).focus(); $('err').textContent = msg; };
+  form.querySelectorAll('input').forEach(i => i.removeAttribute('aria-invalid'));
+  if (mode === 'up' && body.name.length < 2) return bad('name', 'Diga seu nome.');
+  if (!/^\S+@\S+\.\S+$/.test(body.email)) return bad('email', 'Confira o e-mail.');
+  if (body.password.length < (mode === 'up' ? 8 : 1)) return bad('password', mode === 'up' ? 'A senha precisa de pelo menos 8 caracteres.' : 'Digite a senha.');
+  $('go').disabled = true; $('err').textContent = '';
+  try {
+    const r = await fetch(mode === 'up' ? '/api/auth/register' : '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', 'x-jarvis': '1' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'Não consegui entrar agora.');
+    // Conta criada, falta confirmar o e-mail: volta para "Entrar" com o e-mail já preenchido.
+    if (j.pending) { const em = $('email').value; setMode('in'); $('email').value = em; $('err').classList.add('ok'); $('err').textContent = j.message; $('go').disabled = false; return; }
+    location.href = j.next || '/baixar';
+  } catch (er) { $('err').textContent = er.message; $('go').disabled = false; }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# Segredos e dados pessoais: NUNCA vão para o git
+.env
+.env.*
+!.env.example
+data/
+keys.local.json
+tokens.local.json
+profile.json
+memory.json
+*.tmp
+
+node_modules/
+.DS_Store
+*.log
+data-demo/
+proposals/
+audit.log
+amostras-voz/
