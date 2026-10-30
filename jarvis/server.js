@@ -376,7 +376,7 @@ const ALLOWED_HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`, `[::1]:
 // Modo site (Vercel): o servidor público só tem o site (início, Windows, login, download). Conversa, voz, e-mail, arquivos e
 // tudo o que usa chaves de API existe só no app instalado no PC de cada um (com as chaves do .env DELE).
 const SITE_ONLY = process.env.JARVIS_SITE_ONLY === '1';
-const SITE_GET = /^\/(|site3d\.js|site-jc\.js|site-nav\.js|site\.css|favicon\.svg|favicon\.ico|windows|entrar|baixar|guia|landing|download\/JarvisSetup\.exe|download\/jarvis-windows\.zip|jc\/[a-z]+_\d{2}\.png|api\/auth\/me|api\/health)$/;
+const SITE_GET = /^\/(|site3d\.js|site-jc\.js|site-nav\.js|site\.css|favicon\.svg|favicon\.ico|windows|entrar|baixar|guia|landing|download\/JarvisSetup\.exe|download\/jarvis-windows\.zip|jc\/[a-z]+_\d{2}\.png|jcc\/[a-z]+_\d{2}\.png|api\/auth\/me|api\/health)$/;
 const SITE_POST = /^\/api\/auth\/(login|register|logout)$/;
 function guard(req, url) {
   if (SITE_ONLY) {
@@ -394,6 +394,68 @@ function guard(req, url) {
     const o = req.headers.origin;
     if (o && !ALLOWED_HOSTS.has(o.replace(/^https?:\/\//, '').toLowerCase())) throw new HttpError(403, 'Origem não permitida.');
   }
+}
+
+/* ---------- Teste do Jarvis na web (site publicado) ----------
+   Na Vercel várias pessoas usam o mesmo servidor e o disco não guarda nada: aqui o Jarvis SÓ CONVERSA (voz, legenda e
+   slides), por pessoa e sem gravar nada no servidor. A conversa anterior vem do navegador de quem fala. Precisa de conta
+   (Supabase ou dono) e da GEMINI_API_KEY na Vercel; usa só o nível 2.5 (Flash Lite), nunca a chave paga.
+   JARVIS_WEB_TRIAL=0 desliga; JARVIS_WEB_DAILY = mensagens por pessoa por dia (padrão 30). */
+const WEB_TRIAL = () => SITE_ONLY && process.env.JARVIS_WEB_TRIAL !== '0' && !!process.env.GEMINI_API_KEY;
+const webDaily = () => Math.max(1, Math.min(500, Number(process.env.JARVIS_WEB_DAILY) || 30));
+const webUse = new Map();   // "pessoa|dia" -> mensagens (por instância; a cota do Gemini é o teto de verdade)
+function webLeft(who) {
+  const day = new Date().toISOString().slice(0, 10), k = `${who.id}|${day}`;
+  if (webUse.size > 5000) for (const key of webUse.keys()) if (!key.endsWith(day)) webUse.delete(key);
+  return { k, left: Math.max(0, webDaily() - (webUse.get(k) || 0)) };
+}
+// Sem saber como a pessoa prefere ser tratada, o Jarvis a chama pelo primeiro nome.
+const webProfile = who => ({ name: String(who.name || who.email?.split('@')[0] || 'visitante').slice(0, 60), address: 'neutro', lang: 'pt-BR', level: '2.5' });
+const WEB_INTEG = { gmail: { state: 'off', configured: false, message: 'Só no app para Windows.' }, canva: { state: 'soon', message: 'Em breve.' },
+  keys: { gemini: { configured: true }, anthropic: { configured: false } }, workspace: { active: null, recent: [] }, mcp: [], actions: {} };
+const WEB_PATHS = /^\/(app|index\.html|api\/(state|weather|integrations|greeting|chat|tts|stt|mcp|ui\/(size|conversa)))$/;
+async function siteWeb(req, res, u, M) {
+  const p = u.pathname;
+  if (M === 'GET' && p === '/api/ui/events') { res.writeHead(204, SEC_HEADERS); res.end(); return true; }   // nada do PC aqui; 204 = o navegador não insiste
+  if (!WEB_TRIAL() || !WEB_PATHS.test(p)) return false;
+  const who = users.userFromReq(req);
+  if (M === 'GET' && (p === '/app' || p === '/index.html')) {
+    if (!who) { redirect(res, '/entrar?next=/app'); return true; }
+    send(res, 200, await readFile(path.join(ROOT, 'index.html')), 'text/html; charset=utf-8', { 'Content-Security-Policy': CSP }); return true;
+  }
+  if (!who) throw new HttpError(401, 'Entre na sua conta para testar o Jarvis.');
+  const prof = webProfile(who), q = webLeft(who), web = { left: q.left, daily: webDaily() };
+  if (M === 'GET' && p === '/api/state') { send(res, 200, { assistant: ASSISTANT_NAME, web, needsProfile: false, profile: prof, levels: publicLevels(models).filter(l => l.id === '2.5'), defaultLevel: '2.5', modelWarnings: [], integrations: WEB_INTEG }); return true; }
+  if (M === 'GET' && p === '/api/weather') { send(res, 200, { weather: null }); return true; }
+  if (M === 'GET' && p === '/api/integrations') { send(res, 200, WEB_INTEG); return true; }
+  if (M === 'GET' && p === '/api/mcp') { send(res, 200, { servers: [] }); return true; }
+  if (M === 'POST' && (p === '/api/ui/size' || p === '/api/ui/conversa')) { send(res, 200, { ok: true }); return true; }
+  if (M === 'POST' && p === '/api/greeting') {
+    send(res, 200, { greeting: `${greetingWord('America/Sao_Paulo')}, ${addressing(prof).short}.`, gmail: false,
+      weatherText: `Este é o teste na web: aqui eu só converso, ${web.daily} mensagens por dia. Agenda, e-mails, arquivos e o Jarvis Code ficam no app para Windows.` }); return true;
+  }
+  if (M === 'POST' && p === '/api/tts') {
+    const b = await readBody(req, 8000);
+    try { send(res, 200, await tts(typeof b.text === 'string' ? b.text.slice(0, 700) : '', { lang: 'pt-BR' })); }
+    catch (e) { if (e.browser) send(res, 503, { error: e.message, browser: true }); else throw e; }
+    return true;
+  }
+  if (M === 'POST' && !q.left) throw new HttpError(429, `Acabaram as ${web.daily} mensagens de hoje no teste da web. Amanhã tem mais, ou baixe o app para Windows.`);
+  if (M === 'POST' && p === '/api/stt') {
+    const b = await readBody(req, 2_500_000);
+    const { generate } = await import('./lib/router.js');
+    try { send(res, 200, { text: speech.fixSpeech(await speech.transcribe(generate, models, { audio: b.audio, chrome: b.chrome, hints: [] })) }); }
+    catch (e) { throw new HttpError(e.code === 400 ? 400 : 502, e.code === 400 ? e.message : 'Não consegui transcrever o áudio.'); }
+    return true;
+  }
+  if (M === 'POST' && p === '/api/chat') {
+    const b = await readBody(req, 60_000);
+    if (typeof b.text !== 'string' || !b.text.trim()) throw new HttpError(400, 'Escreva ou fale alguma coisa.');
+    webUse.set(q.k, (webUse.get(q.k) || 0) + 1);
+    const out = await chat(models, prof, b.text.slice(0, 1000), '', { web: true, history: b.history });
+    send(res, 200, { ...out, web: { left: q.left - 1, daily: web.daily } }); return true;
+  }
+  return false;
 }
 
 const KEY_PATH = /^\/api\/keys\/(gemini|gemini2|geminipago|anthropic|elevenlabs|github_read|github_write)(\/test)?$/;
@@ -977,6 +1039,7 @@ async function route(req, res, u) {
   const HM = req.method === 'HEAD' && !u.pathname.startsWith('/api/') ? 'GET' : req.method;
   if (SITE_ONLY) {
     const p = u.pathname, M0 = HM;
+    if (await siteWeb(req, res, u, M0)) return;   // teste do Jarvis na web (só conversa), para quem tem conta
     if (M0 === 'GET' && (p === '/app' || p === '/index.html' || p === '/correio')) return redirect(res, '/windows');   // o assistente roda no app instalado
     if (!((M0 === 'GET' || M0 === 'HEAD') && SITE_GET.test(p)) && !(M0 === 'POST' && SITE_POST.test(p)))
       throw new HttpError(404, 'Isso só existe no Jarvis instalado no seu computador.');
@@ -987,7 +1050,7 @@ async function route(req, res, u) {
       if (!to || !/^https:\/\//.test(to)) throw new HttpError(404, 'O instalador ainda não foi publicado.');
       return redirect(res, to);
     }
-    if (M0 === 'GET' && p === '/api/health') return send(res, 200, { ok: true, site: true, signup: users.signupOpen() });
+    if (M0 === 'GET' && p === '/api/health') return send(res, 200, { ok: true, site: true, signup: users.signupOpen(), web: WEB_TRIAL() });
   }
   const url = u.pathname, M = HM;
   // "/" é a landing (guia antes de usar); o assistente em si fica em "/app".

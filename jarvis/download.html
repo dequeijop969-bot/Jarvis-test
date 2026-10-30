@@ -175,7 +175,7 @@ $('logout').onclick = async () => {
   location.href = '/';
 };
 // Site publicado: não existe versão web no servidor ("/app" leva à página do app), então o convite some.
-fetch('/api/health').then(r => r.json()).then(j => { if (j.site) $('web').remove(); }).catch(() => {});
+fetch('/api/health').then(r => r.json()).then(j => { if (j.site && !j.web) $('web').remove(); }).catch(() => {});
 $('dlBtn').addEventListener('click', () => {
   const t = $('toast'); t.textContent = 'Download começando (cerca de 130 MB). Depois, abra o JarvisSetup.exe e clique em Instalar.'; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 4500);
 });

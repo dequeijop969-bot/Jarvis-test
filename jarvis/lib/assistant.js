@@ -238,14 +238,23 @@ MODO CODE (você está no modo Talk)
 export const QUICK_NOTE = `
 
 CHAMADA RÁPIDA POR VOZ: o usuário chamou você pelo nome enquanto fazia outra coisa. Responda em 1 a 3 frases curtas (no máximo uns 250 caracteres falados no total), "slides": [] e só a "intro", a menos que ele peça claramente uma explicação, uma lista ou uma apresentação.`;
+// Histórico mandado pelo navegador no teste web: só texto, papéis válidos, curto, começando por "user".
+function webHistory(h) {
+  const out = (Array.isArray(h) ? h : []).slice(-8).filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .map(m => ({ role: m.role, content: m.content.replace(/\s+/g, ' ').trim().slice(0, 1200) }));
+  while (out.length && out[0].role !== 'user') out.shift();
+  return out;
+}
 // images: TODAS as imagens que você mandou (não só a primeira); extra: memória do projeto em questão (lib/projects.js).
-export async function chat(models, profile, userText, attach = '', { quick = false, pdfs = [], images = [], extra = '' } = {}) {
+// web: teste no site publicado (várias pessoas no mesmo servidor). A conversa vem do navegador de quem está falando
+// (history), nada vai para a memória do servidor, e sem comandos locais nem busca de fotos.
+export async function chat(models, profile, userText, attach = '', { quick = false, pdfs = [], images = [], extra = '', web = false, history = [] } = {}) {
   const many = pdfs.length + images.length;
   const text = String(userText || '').trim().slice(0, 2000) || (attach || many ? `Dê uma olhada ${many > 1 ? 'nos arquivos' : 'no arquivo'} que eu mandei.` : '');
   if (!text) throw Object.assign(new Error('Mensagem vazia.'), { code: 400 });
-  const cmd = detectCommand(text);
+  const cmd = web ? null : detectCommand(text);
   if (cmd) return { ...runCommand(cmd, profile), command: cmd, meta: { provider: null, model: null, tier: 'local', degraded: false } };
-  const ctx = memory.context();
+  const ctx = web ? { summary: '', prefs: [], emails: [], agenda: [], github: [], messages: webHistory(history) } : memory.context();
   const level = profile?.level || models.defaultLevel;
   const anexos = [...pdfs.map(p => `PDF "${p.name}"`), ...images.map((m, i) => `imagem ${i + 1} "${m.name}"`)];
   const r = await generate(models, level, {
@@ -256,8 +265,11 @@ export async function chat(models, profile, userText, attach = '', { quick = fal
     validate: cleanReply, cacheTtl: ctx.messages.length || attach || quick || many || extra ? 0 : 90_000, ...(many ? { timeout: 90_000 } : {})
   });
   const reply = r.data || simple(str(r.text.replace(/[{}[\]"`*#]/g, ' ').replace(/\s+/g, ' '), 400) || 'Perdi o fio da meada. Pode repetir?');  const spoken = [reply.intro, ...reply.slides.map(s => `${s.title}: ${s.narration.slice(0, 120)}`), reply.outro].filter(Boolean).join(' | ');
-  const needsCompact = memory.addExchange(text, spoken, reply.remember);
-  if (needsCompact) memory.compact((prev, transcript) => summarize(models, prev, transcript)).catch(() => {});
+  if (web) { for (const sl of reply.slides) delete sl.image; reply.image_search = ''; reply.remember = []; }
+  else {
+    const needsCompact = memory.addExchange(text, spoken, reply.remember);
+    if (needsCompact) memory.compact((prev, transcript) => summarize(models, prev, transcript)).catch(() => {});
+  }
   // Fontes: cada link é conferido (abre de verdade?) enquanto as fotos são buscadas; o que não abre sai do slide.
   const checking = checkSources(reply.slides);
   // Fotos dos slides: busca em paralelo (com limite de tempo); slide sem foto achada segue sem ela.

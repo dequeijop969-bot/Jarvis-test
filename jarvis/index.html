@@ -1707,7 +1707,8 @@ function listen(){
 async function ask(q,opts){
   const r=++run;setMode('think');audio.pause();flash('');voiceWarned=false;clearCache();
   try{
-    const d=await api('/api/chat',{text:q,mode:window.jMode?.()||'talk',wake:Date.now()-(window.__wake||0)<120000,files:window.__takeFiles?.()||[],...(opts?.voice?{voice:true,conf:opts.conf,alts:opts.alts}:{})});if(r!==run)return;
+    const d=await api('/api/chat',{text:q,mode:window.jMode?.()||'talk',wake:Date.now()-(window.__wake||0)<120000,files:window.__takeFiles?.()||[],...(opts?.voice?{voice:true,conf:opts.conf,alts:opts.alts}:{}),...(S.state?.web?{history:S.hist}:{})});if(r!==run)return;
+    if(S.state?.web){S.hist.push({role:'user',content:q},{role:'assistant',content:[d.intro,...(d.slides||[]).map(s=>`${s.title}: ${s.narration}`),d.outro].filter(Boolean).join(' ').slice(0,1200)});S.hist=S.hist.slice(-8);webLeft(d.web)}
     if(d.heard)$('#you').textContent='“'+d.heard+'”';   // o que o Jarvis entendeu, já corrigido
     if(d.abrirCorreio)window.__mailOpen?.(d.correio?.id);   // correio em pop-up nesta janela (no V, ou no centro)
     planB(d.meta);
@@ -1742,9 +1743,20 @@ function handleQuery(){
   if(g&&M[g])flash(M[g],g!=='ok');if(c&&C[c])flash(C[c]);
   if(g||c)history.replaceState(null,'','/app');
 }
+/* Teste na web (site publicado): só conversa. O que é do PC (ajustes, modo Code, agenda, e-mails, arquivos) some, a conversa
+   anterior fica neste navegador (vai junto em cada pedido) e a barra mostra quantas mensagens ainda restam hoje. */
+S.hist=[];
+function webMode(){
+  document.body.classList.add('web');
+  const bar=$('#bar'),q=document.createElement('span');q.id='webq';q.className='chip';bar.insertBefore(q,$('#intBtn'));
+  const dl=document.createElement('a');dl.className='btn pri';dl.href='/baixar';dl.id='webDl';dl.textContent='Baixar o app';bar.append(dl);
+  webLeft(S.state.web);
+}
+function webLeft(w){const q=$('#webq');if(!q||!w)return;q.textContent=`Teste web · ${w.left} de ${w.daily} hoje`;q.title='Mensagens que ainda restam hoje no teste do Jarvis na web. No app para Windows não há limite.';q.classList.toggle('low',w.left<=5)}
 async function boot(){
   setMode('idle');handleQuery();
   try{S.state=await get('/api/state')}catch(e){flash(e.message,true);return}
+  if(S.state.web)webMode();
   NAME=S.state.assistant||NAME;S.profile=S.state.profile;S.integ=S.state.integrations;S.levels=S.state.levels;
   renderBrand();renderLevels();renderInteg();setMode('idle');
   if(S.state.needsProfile)openProfile(false);else showStart();
@@ -3035,6 +3047,7 @@ const pill=document.createElement('div');pill.id='gamePill';pill.setAttribute('r
 pill.innerHTML='<i></i><span>Jogando</span><button type="button">Parar</button>';
 let t=null,was=false;
 async function poll(){
+  if(S.state?.web)return;   // teste na web: não há jogo rodando no PC
   let j;try{j=await req('GET','/api/game')}catch{return}
   const g=j.game;pill.classList.toggle('on',!!g);
   if(g)pill.querySelector('span').textContent=`Jogando · ${g.keys.map(k=>({space:'espaço',up:'↑',down:'↓',left:'←',right:'→'}[k]||k.toUpperCase())).join(' ')} · ${g.moves} jogada${g.moves===1?'':'s'}`;
@@ -3151,6 +3164,11 @@ f.addEventListener('submit',async e=>{e.preventDefault();const q=inp.value.trim(
 #tx .go:disabled{opacity:.4;cursor:default;filter:none}
 #tx svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 body.mini:not(.mini-v) #tx{display:none}
+/* Teste na web: só o que funciona sem o PC */
+body.web .ibtn,body.web .mode-sw,body.web #intBtn,body.web #quick,body.web #wx,body.web #tx .up,body.web #planb{display:none!important}
+#webq{font:600 11.5px var(--mono);color:var(--acc);border-color:color-mix(in oklab,var(--acc) 40%,var(--line));white-space:nowrap}
+#webq.low{color:#ffb86b;border-color:#ffb86b}
+#webDl{height:34px;padding:0 14px;font-size:13px;white-space:nowrap}
 /* V: logo abaixo da barra, só quando você toca em "Digitar" (Esc fecha) */
 body.mini-v #tx{position:fixed;z-index:21;top:56px;left:50%;transform:translateX(-50%);width:min(520px,58vw);margin:0;display:none;background:#0b0c0fee}
 body.mini-v #tx.on{display:flex;animation:vBarIn .3s var(--ease) both}
@@ -3820,8 +3838,8 @@ pj.querySelector('#pjL').addEventListener('click',async e=>{const b=e.target.clo
     pjLoad()}catch(er){note(pj.querySelector('#pjOk'),er.message,true)}});
 
 // Carrega quando o painel abre
-const _tp2=togglePanel;togglePanel=function(force){_tp2(force);if(!document.getElementById('panel').hidden){agLoad();skLoad();pjLoad();abFill()}};
-setTimeout(()=>{agLoad();skLoad();pjLoad();abFill()},1500);
+const _tp2=togglePanel;togglePanel=function(force){_tp2(force);if(!S.state?.web&&!document.getElementById('panel').hidden){agLoad();skLoad();pjLoad();abFill()}};
+setTimeout(()=>{if(!S.state?.web){agLoad();skLoad();pjLoad();abFill()}},1500);   // na web os Ajustes não existem
 })();
 </script>
 <style id="beta-css">

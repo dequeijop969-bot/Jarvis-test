@@ -51,7 +51,7 @@ const cookieOf = r => (r.headers.get('set-cookie') || '').split(';')[0];
 
 try {
   // A página sabe que o cadastro está aberto.
-  assert.deepEqual(await (await get('/api/health')).json(), { ok: true, site: true, signup: true });
+  assert.deepEqual(await (await get('/api/health')).json(), { ok: true, site: true, signup: true, web: false });
 
   // Cadastro: validação local antes de ir ao Supabase.
   assert.equal((await post('/api/auth/register', { name: 'Ana', email: 'ruim', password: '12345678' })).status, 400);

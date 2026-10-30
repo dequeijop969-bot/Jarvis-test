@@ -480,7 +480,7 @@ if (!RM) document.querySelectorAll('[data-tilt]').forEach(el => {
 </script>
 <script>
 // Site hospedado (Vercel): o assistente roda só no app instalado, então os botões "no navegador" levam ao app para Windows.
-fetch('/api/health').then(r => r.json()).then(j => { if (j.site) document.querySelectorAll('[data-web]').forEach(e => { e.href = '/windows'; e.lastChild.textContent = 'Conhecer o app'; }); }).catch(() => {});
+fetch('/api/health').then(r => r.json()).then(j => { if (j.site && !j.web) document.querySelectorAll('[data-web]').forEach(e => { e.href = '/windows'; e.lastChild.textContent = 'Conhecer o app'; }); else if (j.web) document.querySelectorAll('[data-web]').forEach(e => { e.lastChild.textContent = 'Testar no navegador'; }); }).catch(() => {});
 </script>
 </body>
 </html>

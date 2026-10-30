@@ -416,7 +416,7 @@ if (CAME[de]) { document.getElementById('cameTxt').textContent = CAME[de]; docum
 if (de) { document.getElementById('navBack').href = '/app'; document.getElementById('navBackTxt').textContent = 'Voltar ao Jarvis'; }
 
 // Site publicado (sem o assistente no servidor): "/app" volta para esta página, então os botões do navegador somem.
-fetch('/api/health').then(r => r.json()).then(j => { if (j.site) document.querySelectorAll('[data-web]').forEach(e => e.remove()); }).catch(() => {});
+fetch('/api/health').then(r => r.json()).then(j => { if (j.site && !j.web) document.querySelectorAll('[data-web]').forEach(e => e.remove()); else if (j.web) document.querySelectorAll('[data-web]').forEach(e => { e.lastChild.textContent = 'Testar no navegador'; }); }).catch(() => {});
 
 
 
