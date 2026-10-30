@@ -1,18 +1,28 @@
-# Segredos e dados pessoais: NUNCA vão para o git
+# Segredos e dados pessoais: NUNCA vão para o GitHub
 .env
 .env.*
 !.env.example
-data/
+**/data/
+**/data-demo/
 keys.local.json
 tokens.local.json
+users.json
+sessions.json
 profile.json
 memory.json
-*.tmp
+correio.json
+*.log
+logs/
+
+# Coisas do app no seu PC
+mascote/config.json
+mascote/navegador-flutuante/
+mascote/vosk/
+mascote/sprites/previa/
+*.exe
+voz-jarvis/
+amostras-voz/
 
 node_modules/
+.vercel/
 .DS_Store
-*.log
-data-demo/
-proposals/
-audit.log
-amostras-voz/

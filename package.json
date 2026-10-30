@@ -1,14 +1,6 @@
 {
-  "name": "jarvis",
-  "version": "3.0.0",
+  "name": "jarvis-site",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=20.6"
-  },
-  "scripts": {
-    "start": "node --env-file=.env server.js",
-    "check": "node --check server.js && node test/unit.mjs && node test/router.mjs && node test/actions.mjs && node test/intents.mjs && node test/fallback.mjs && node test/fixes.mjs && node test/flow.mjs && node test/e2e.mjs && node test/images.mjs && node test/voice.mjs && node test/launcher.mjs && node test/mascot.mjs && node test/codeplan.mjs && node test/agent.mjs && node test/site.mjs && node test/speech.mjs && node test/workspace.mjs && node test/mcp.mjs && node test/mood.mjs && node test/key2.mjs && node test/voicestudio.mjs && node test/attachments.mjs && node test/correio.mjs && node test/glass.mjs && node test/play.mjs && node test/filemaker.mjs && node test/skills.mjs && node test/hardening.mjs && node test/supabase.mjs && node test/arquivos.mjs",
-    "demo": "node test/demo.mjs"
-  }
+  "engines": { "node": "22.x" }
 }
