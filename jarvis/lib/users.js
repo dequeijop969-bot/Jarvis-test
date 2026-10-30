@@ -196,15 +196,15 @@ function unsign(v) {
   try { return JSON.parse(Buffer.from(body, 'base64url').toString()); } catch { return null; }
 }
 let googleCache = { at: 0, on: false };
-// O Google está ligado no Supabase? (consulta as configurações públicas, guardada por 10 min)
+// O Google está ligado no Supabase? (consulta as configurações públicas, guardada por 1 min)
 export async function googleOn() {
   const s = supa();
   if (!s || process.env.JARVIS_GOOGLE_LOGIN === '0') return false;
-  if (Date.now() - googleCache.at < 10 * 60_000) return googleCache.on;
+  if (Date.now() - googleCache.at < 60_000) return googleCache.on;   // 1 min: ligou no Supabase, aparece logo
   try {
     const r = await fetch(`${s.url}/auth/v1/settings`, { headers: { apikey: s.key }, signal: AbortSignal.timeout(5000) });
     googleCache = { at: Date.now(), on: r.ok && (await r.json()).external?.google === true };
-  } catch { googleCache = { at: Date.now() - 9 * 60_000, on: false }; }   // falhou: tenta de novo em 1 min
+  } catch { googleCache = { at: Date.now() - 45_000, on: false }; }   // falhou: tenta de novo em 15 s
   return googleCache.on;
 }
 export function googleStart(origin, next) {
