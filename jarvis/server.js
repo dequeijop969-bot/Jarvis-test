@@ -376,7 +376,7 @@ const ALLOWED_HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`, `[::1]:
 // Modo site (Vercel): o servidor público só tem o site (início, Windows, login, download). Conversa, voz, e-mail, arquivos e
 // tudo o que usa chaves de API existe só no app instalado no PC de cada um (com as chaves do .env DELE).
 const SITE_ONLY = process.env.JARVIS_SITE_ONLY === '1';
-const SITE_GET = /^\/(|site3d\.js|site-jc\.js|site-nav\.js|site\.css|favicon\.svg|favicon\.ico|windows|entrar|baixar|guia|landing|download\/JarvisSetup\.exe|download\/jarvis-windows\.zip|jc\/[a-z]+_\d{2}\.png|jcc\/[a-z]+_\d{2}\.png|api\/auth\/me|api\/health)$/;
+const SITE_GET = /^\/(|site3d\.js|site-jc\.js|site-nav\.js|site\.css|favicon\.svg|favicon\.ico|windows|entrar|baixar|guia|landing|download\/JarvisSetup\.exe|download\/jarvis-windows\.zip|jc\/[a-z]+_\d{2}\.png|jcc\/[a-z]+_\d{2}\.png|api\/auth\/me|api\/health|auth\/entrar\/(google|volta))$/;
 const SITE_POST = /^\/api\/auth\/(login|register|logout)$/;
 function guard(req, url) {
   if (SITE_ONLY) {
@@ -1050,7 +1050,21 @@ async function route(req, res, u) {
       if (!to || !/^https:\/\//.test(to)) throw new HttpError(404, 'O instalador ainda não foi publicado.');
       return redirect(res, to);
     }
-    if (M0 === 'GET' && p === '/api/health') return send(res, 200, { ok: true, site: true, signup: users.signupOpen(), web: WEB_TRIAL() });
+    if (M0 === 'GET' && p === '/api/health') return send(res, 200, { ok: true, site: true, signup: users.signupOpen(), web: WEB_TRIAL(), google: await users.googleOn() });
+    // Entrar com o Google (pelo Supabase): ida e volta. Qualquer erro volta para o login com um aviso.
+    const back = (to, cookies = [users.clearPkce()]) => { res.writeHead(302, { ...SEC_HEADERS, Location: to, 'Set-Cookie': cookies }); res.end(); };
+    if (M0 === 'GET' && p === '/auth/entrar/google') {
+      const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
+      const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim() === 'http' ? 'http' : 'https';
+      const origin = (process.env.JARVIS_SITE_URL || `${proto}://${host}`).replace(/\/+$/, '');
+      try { const g = users.googleStart(origin, safeNext(u.searchParams.get('next'))); return back(g.url, [g.cookie]); }
+      catch { return back('/entrar?erro=google'); }
+    }
+    if (M0 === 'GET' && p === '/auth/entrar/volta') {
+      if (u.searchParams.get('error')) return back('/entrar?erro=google');
+      try { const { user, next } = await users.googleFinish(u.searchParams.get('code'), users.pkceOf(req)); return back(safeNext(next), [users.setCookie(users.createSession(user)), users.clearPkce()]); }
+      catch { return back('/entrar?erro=google'); }
+    }
   }
   const url = u.pathname, M = HM;
   // "/" é a landing (guia antes de usar); o assistente em si fica em "/app".

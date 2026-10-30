@@ -59,6 +59,14 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 .tabs .th{position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:10px;background:linear-gradient(180deg,var(--acc2),var(--acc));box-shadow:0 6px 20px -8px var(--acc);transition:transform .35s var(--ease)}
 .tabs[data-t=up] .th{transform:translateX(100%)}
 .tabs[hidden]{display:none}
+#gWrap[hidden]{display:none}
+.gbtn{display:flex;align-items:center;justify-content:center;gap:11px;width:100%;font:600 15px 'Montserrat';color:#1f1f1f;background:#fff;border:1px solid #dadce0;border-radius:13px;padding:13px 18px;text-decoration:none;transition:box-shadow .2s,transform .15s}
+.gbtn:hover{box-shadow:0 6px 22px -8px #ffffff55}
+.gbtn:active{transform:scale(.98)}
+.gbtn svg{width:19px;height:19px;flex:none}
+.gbtn[aria-busy=true]{opacity:.7;pointer-events:none}
+.or{display:flex;align-items:center;gap:12px;margin:18px 0 16px;font:500 11.5px var(--mono,monospace);letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+.or::before,.or::after{content:'';flex:1;height:1px;background:var(--line)}
 form{display:grid;gap:14px}
 .f{display:grid;gap:7px}
 .f label{font:600 13px 'Montserrat';color:#d6d3cc;display:flex;justify-content:space-between}
@@ -141,6 +149,12 @@ form[data-t=up] small.only-up{display:inline}
         <button type="button" role="tab" id="tUp" aria-selected="false" aria-controls="form">Criar conta</button>
       </div>
 
+      <!-- Entrar com o Google (pelo Supabase): aparece só quando o Google está ligado lá. Cria a conta na primeira vez. -->
+      <div id="gWrap" hidden>
+        <a class="gbtn" id="gBtn" href="/auth/entrar/google"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5a5.6 5.6 0 0 1-2.4 3.7v3h3.9c2.2-2.1 3.5-5.2 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.3v3.1A12 12 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.3 14.3a7.2 7.2 0 0 1 0-4.6V6.6H1.3a12 12 0 0 0 0 10.8z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.3 6.6l4 3.1c.9-2.9 3.6-4.9 6.7-4.9z"/></svg><span id="gTxt">Continuar com o Google</span></a>
+        <p class="or"><span>ou com e-mail</span></p>
+      </div>
+
       <form id="form" data-t="in" novalidate>
         <div class="f only-up"><label for="name">Como devo chamá-lo?</label><div class="in"><input id="name" name="name" autocomplete="name" placeholder="Seu nome" maxlength="60"></div></div>
         <div class="f"><label for="email">E-mail</label><div class="in"><input id="email" name="email" type="email" autocomplete="email" placeholder="voce@exemplo.com" required></div></div>
@@ -173,6 +187,8 @@ const $ = id => document.getElementById(id);
 fetch('/api/health').then(r => r.json()).then(j => {
   if (!j.site) return;
   $('webNote').remove();
+  // Google ligado no Supabase: o botão aparece (e leva para onde a pessoa ia: baixar ou testar na web).
+  if (j.google) { $('gWrap').hidden = false; $('gBtn').href = '/auth/entrar/google?next=' + encodeURIComponent(next); $('gBtn').onclick = () => { $('gBtn').setAttribute('aria-busy', 'true'); $('gTxt').textContent = 'Indo para o Google…'; }; }
   // Contas de cada pessoa ficam no Supabase; sem ele, só o dono entra e a aba "Criar conta" some.
   if (j.signup) document.querySelector('.legal').textContent = 'A conta fica no Supabase, com a senha protegida (nunca em texto). Suas chaves de IA nunca saem do seu PC.';
   else { if (mode === 'up') setMode('in'); tabs.hidden = true; }
@@ -191,6 +207,8 @@ function setMode(m) {
 }
 $('tIn').onclick = () => setMode('in'); $('tUp').onclick = () => setMode('up');
 if (location.hash === '#criar') setMode('up');
+// Voltou do Google sem conseguir entrar (cancelou, expirou ou o Google recusou).
+if (new URLSearchParams(location.search).get('erro') === 'google') $('err').textContent = 'Não deu para entrar com o Google. Tente de novo ou use o e-mail.';
 
 $('eye').onclick = () => {
   const p = $('password'), show = p.type === 'password';

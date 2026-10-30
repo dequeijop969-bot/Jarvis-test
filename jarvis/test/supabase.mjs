@@ -16,7 +16,7 @@ delete process.env.JARVIS_ALLOW_SIGNUP;
 
 // Supabase falso: guarda contas na memória; "confirmado" só depois de confirm(email).
 const accounts = new Map(), calls = [];
-let down = false;
+let down = false, googleOn = true, lastChallenge = null;
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opt = {}) => {
   if (!String(url).startsWith(SB)) return realFetch(url, opt);
@@ -38,6 +38,13 @@ globalThis.fetch = async (url, opt = {}) => {
     if (!a.confirmed) return json(400, { error_code: 'email_not_confirmed', msg: 'Email not confirmed' });
     return json(200, { access_token: 'at', user: { id: a.id, email: b.email, user_metadata: { name: a.name } } });
   }
+  // Google: configurações públicas e a troca do código (PKCE) da volta do Google.
+  if (u.pathname === '/auth/v1/settings') return json(200, { external: { email: true, google: googleOn } });
+  if (u.pathname === '/auth/v1/token' && u.searchParams.get('grant_type') === 'pkce') {
+    const want = (await import('node:crypto')).createHash('sha256').update(String(b.code_verifier)).digest('base64url');
+    if (b.auth_code !== 'codigo-do-google-123' || want !== lastChallenge) return json(400, { error_code: 'bad_code_verifier', msg: 'invalid' });
+    return json(200, { access_token: 'at', user: { id: '11111111-2222-4333-8444-555555555555', email: 'Bia@Gmail.com', user_metadata: { full_name: 'Bia Lima', name: 'Bia Lima' } } });
+  }
   return json(404, {});
 };
 
@@ -51,11 +58,11 @@ const cookieOf = r => (r.headers.get('set-cookie') || '').split(';')[0];
 
 try {
   // A página sabe que o cadastro está aberto.
-  assert.deepEqual(await (await get('/api/health')).json(), { ok: true, site: true, signup: true, web: false });
+  assert.deepEqual(await (await get('/api/health')).json(), { ok: true, site: true, signup: true, web: false, google: true });
 
   // Cadastro: validação local antes de ir ao Supabase.
   assert.equal((await post('/api/auth/register', { name: 'Ana', email: 'ruim', password: '12345678' })).status, 400);
-  assert.equal(calls.length, 0, 'e-mail inválido nem chega no Supabase');
+  assert.equal(calls.filter(c => c.path.includes('signup')).length, 0, 'e-mail inválido nem chega no Supabase');
   // Senha que o Supabase acha fraca: mensagem em português.
   let r = await post('/api/auth/register', { name: 'Ana', email: 'ana@exemplo.com', password: 'curta123' });
   assert.equal(r.status, 400); assert.match((await r.json()).error, /Senha fraca/);
@@ -112,6 +119,30 @@ try {
   assert.equal((await (await get('/api/health')).json()).signup, false);
   delete process.env.JARVIS_ALLOW_SIGNUP;
 
+  // Entrar com o Google: ida para o Supabase com PKCE (o verificador fica num cookie assinado, nunca na URL)...
+  r = await fetch(B + '/auth/entrar/google?next=/app', { redirect: 'manual', headers: { 'x-forwarded-host': 'jarvis.exemplo.app', 'x-forwarded-proto': 'https' } });
+  assert.equal(r.status, 302);
+  const go = new URL(r.headers.get('location'));
+  assert.equal(go.origin + go.pathname, SB + '/auth/v1/authorize'); assert.equal(go.searchParams.get('provider'), 'google');
+  assert.equal(go.searchParams.get('redirect_to'), 'https://jarvis.exemplo.app/auth/entrar/volta'); assert.equal(go.searchParams.get('code_challenge_method'), 's256');
+  lastChallenge = go.searchParams.get('code_challenge');
+  const pk = (r.headers.get('set-cookie') || '').split(';')[0];
+  assert.match(pk, /^jarvis_pkce=/); assert.match(r.headers.get('set-cookie'), /HttpOnly/); assert.ok(!go.search.includes(pk.split('=')[1].split('.')[0]), 'verificador fora da URL');
+  // ... e volta: código + verificador viram a conta e a sessão de sempre; vai para onde a pessoa ia (/app).
+  r = await get('/auth/entrar/volta?code=codigo-do-google-123', pk);
+  assert.equal(r.status, 302); assert.equal(r.headers.get('location'), '/app');
+  const gk = (r.headers.get('set-cookie') || '').match(/jarvis_sid=[^;]+/)[0];
+  assert.deepEqual((await (await get('/api/auth/me', gk)).json()).user, { id: 'sb_11111111-2222-4333-8444-555555555555', name: 'Bia Lima', email: 'bia@gmail.com' });
+  assert.equal((await get('/baixar', gk)).status, 200);
+  // Sem o cookie (outra máquina, ou expirou), código errado, ou o Google recusou: volta para o login com aviso.
+  for (const [q, c] of [['?code=codigo-do-google-123', ''], ['?code=outro-codigo-qualquer', pk], ['?error=access_denied', pk], ['?code=codigo-do-google-123', pk.replace(/.$/, 'x')]])
+    assert.equal((await get('/auth/entrar/volta' + q, c)).headers.get('location'), '/entrar?erro=google', q + ' ' + !!c);
+  // "next" só para páginas nossas: nada de mandar para fora.
+  r = await fetch(B + '/auth/entrar/google?next=https://evil.com', { redirect: 'manual' });
+  lastChallenge = new URL(r.headers.get('location')).searchParams.get('code_challenge');
+  r = await get('/auth/entrar/volta?code=codigo-do-google-123', (r.headers.get('set-cookie') || '').split(';')[0]);
+  assert.equal(r.headers.get('location'), '/baixar');
+
   // Chave secreta colada por engano: recusada (só a pública serve).
   const anon = process.env.SUPABASE_ANON_KEY;
   process.env.SUPABASE_ANON_KEY = 'sb_secret_' + 'z'.repeat(30); assert.equal(users.supa(), null);
@@ -124,7 +155,7 @@ try {
   assert.equal(users.supa(), null);
   assert.equal((await post('/api/auth/register', { name: 'Bia', email: 'bia@exemplo.com', password: 'senha-boa-123' })).status, 403);
 
-  console.log('supabase: cadastro com confirmação, login, cookie por pessoa, dono, erros e cadastro fechado ok');
+  console.log('supabase: cadastro com confirmação, login, Google (PKCE), cookie por pessoa, dono, erros e cadastro fechado ok');
 } finally {
   server.close(); globalThis.fetch = realFetch;
   fs.rmSync(DIR, { recursive: true, force: true });

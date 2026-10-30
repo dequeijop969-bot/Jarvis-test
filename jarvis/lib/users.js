@@ -182,6 +182,54 @@ async function supaRegister(n, e, pw) {
   throw err(status >= 500 ? 503 : 400, 'Não consegui criar a conta agora. Tente de novo em instantes.');
 }
 
+/* ---------- Entrar com o Google (pelo Supabase) ----------
+   O Supabase fala com o Google; aqui só começa e termina o caminho, no fluxo PKCE: o "verificador" fica num cookie
+   assinado e curto (10 min) e nunca passa pela URL. Na volta, o código + o verificador viram a conta, e a sessão é a
+   mesma de sempre (cookie assinado). Liga sozinho quando o provedor Google está ativo no Supabase. */
+const PKCE = 'jarvis_pkce';
+const sign = body => `${body}.${crypto.createHmac('sha256', secret()).update(body).digest('base64url')}`;
+function unsign(v) {
+  const [body, sig] = String(v || '').split('.');
+  if (!body || !sig) return null;
+  const good = crypto.createHmac('sha256', secret()).update(body).digest('base64url');
+  if (sig.length !== good.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(good))) return null;
+  try { return JSON.parse(Buffer.from(body, 'base64url').toString()); } catch { return null; }
+}
+let googleCache = { at: 0, on: false };
+// O Google está ligado no Supabase? (consulta as configurações públicas, guardada por 10 min)
+export async function googleOn() {
+  const s = supa();
+  if (!s || process.env.JARVIS_GOOGLE_LOGIN === '0') return false;
+  if (Date.now() - googleCache.at < 10 * 60_000) return googleCache.on;
+  try {
+    const r = await fetch(`${s.url}/auth/v1/settings`, { headers: { apikey: s.key }, signal: AbortSignal.timeout(5000) });
+    googleCache = { at: Date.now(), on: r.ok && (await r.json()).external?.google === true };
+  } catch { googleCache = { at: Date.now() - 9 * 60_000, on: false }; }   // falhou: tenta de novo em 1 min
+  return googleCache.on;
+}
+export function googleStart(origin, next) {
+  const s = supa();
+  if (!s) throw err(404, 'Login com o Google não configurado.');
+  const verifier = crypto.randomBytes(32).toString('base64url');
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+  const cookie = sign(Buffer.from(JSON.stringify({ v: verifier, n: next, exp: Date.now() + 10 * 60_000 })).toString('base64url'));
+  const q = new URLSearchParams({ provider: 'google', redirect_to: `${origin}/auth/entrar/volta`, code_challenge: challenge, code_challenge_method: 's256' });
+  return { url: `${s.url}/auth/v1/authorize?${q}`, cookie: `${PKCE}=${cookie}; HttpOnly; SameSite=Lax; Path=/auth/entrar; Max-Age=600${SITE() ? '; Secure' : ''}` };
+}
+export const pkceOf = req => (String(req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${PKCE}=([A-Za-z0-9_.-]{20,600})`)) || [])[1] || null;
+export const clearPkce = () => `${PKCE}=; HttpOnly; SameSite=Lax; Path=/auth/entrar; Max-Age=0`;
+// Volta do Google: troca o código pela conta. Devolve { user, next }.
+export async function googleFinish(code, pkceCookie) {
+  const st = unsign(pkceCookie);
+  if (!st || !(st.exp > Date.now()) || typeof st.v !== 'string') throw err(400, 'O login com o Google expirou. Tente de novo.');
+  if (typeof code !== 'string' || !/^[\w-]{8,200}$/.test(code)) throw err(400, 'O Google não devolveu o código de acesso.');
+  const { status, j } = await supaCall('/auth/v1/token?grant_type=pkce', { auth_code: code, code_verifier: st.v });
+  if (status !== 200 || !j.user?.id) throw err(status >= 500 ? 503 : 401, 'Não consegui entrar com o Google. Tente de novo.');
+  const u = supaUser(j.user);
+  if (!u.name || u.name === 'Você') u.name = String(j.user.user_metadata?.full_name || j.user.user_metadata?.name || '').slice(0, 60) || u.name;
+  return { user: u, next: st.n };
+}
+
 export function siteToken(user) {
   const u = typeof user === 'object' && user ? user : { id: user };
   const d = u.id === 'dono' ? { u: 'dono' } : { u: u.id, n: u.name, e: u.email };
