@@ -10,7 +10,8 @@ export const CAL_WRITE_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
 export const grantedScopes = () => String(getTokens('google')?.scope || '').split(' ').filter(Boolean);
 export const canTrash = () => grantedScopes().includes(MODIFY_SCOPE);
-export const canCalendar = () => grantedScopes().includes(CAL_SCOPE);
+// Ler a agenda: "ver" (readonly) ou "gerenciar eventos" (events), que também lê. Na tela do Google dá para marcar só um dos dois.
+export const canCalendar = () => grantedScopes().includes(CAL_SCOPE) || grantedScopes().includes(CAL_WRITE_SCOPE);
 export const canCalendarWrite = () => grantedScopes().includes(CAL_WRITE_SCOPE);
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';

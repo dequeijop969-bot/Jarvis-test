@@ -1761,8 +1761,9 @@ async function boot(){
   renderBrand();renderLevels();renderInteg();setMode('idle');
   if(S.state.needsProfile)openProfile(false);else showStart();
   refreshWeather();setInterval(refreshWeather,30*60_000);
-  const k=S.integ.keys;
-  if(!k.gemini.configured&&!k.anthropic.configured)flash(withAddr('Falta uma chave de IA (Gemini ou Anthropic) no arquivo .env do Jarvis')+'. Sem ela, só sei dizer as horas.',true);
+  const k=S.integ.keys,qs=new URLSearchParams(location.search);
+  if(qs.get('conta')){flash(qs.get('conta')==='ok'?withAddr(`Conta conectada${S.integ.conta?.name?': '+S.integ.conta.name:''}. Às suas ordens`)+'.':(qs.get('msg')||'Não consegui conectar a conta.'),qs.get('conta')!=='ok');history.replaceState(null,'',location.pathname+(MINI?'?mini=1':''))}
+  else if(!k.gemini.configured&&!k.anthropic.configured&&!S.integ.conta?.on)flash(withAddr('Entre com a sua conta JARVIS em Ajustes → Conexões e eu começo a responder')+'.',true);
   if(!SR)flash('Seu navegador não reconhece voz. Use o Chrome ou o Edge.',true);
 }
 boot();
@@ -3629,7 +3630,7 @@ pin.insertAdjacentHTML('afterbegin','<div class="ph" data-tab="*"><h3></h3><p></
 const bk=document.createElement('div');bk.id='panelBk';bk.hidden=true;panel.before(bk);
 // Cada bloco do painel (criado pelos outros scripts) entra na sua aba.
 const tabOf=c=>c.classList.contains('ph')?'*':c.querySelector('#accRows')?'contas':c.querySelector('#pfSum')?'perfil':
-  c.id==='lxWrap'?'apps':(c.id==='wsWrap'||c.id==='mcpWrap')?'code':c.id==='agWrap'?'agenda':c.id==='skWrap'?'skills':c.id==='pjWrap'?'projetos':c.id==='abWrap'?'perfil':'contas';
+  c.id==='lxWrap'?'apps':(c.id==='wsWrap'||c.id==='mcpWrap')?'code':c.id==='agWrap'?'agenda':c.id==='skWrap'?'skills':c.id==='pjWrap'?'projetos':c.id==='abWrap'?'perfil':c.id==='ctWrap'?'contas':'contas';
 function layout(){
   for(const c of pin.children){const t=tabOf(c);c.dataset.tab=t;c.hidden=t!=='*'&&t!==cur;if(t==='contas'||t==='perfil')c.classList.add('nohd')}
   const t=TABS.find(x=>x.k===cur);pin.querySelector('.ph h3').textContent=t.nm;pin.querySelector('.ph p').textContent=t.ds;
@@ -3692,6 +3693,12 @@ layout();
 .aj .pjAdd{display:flex;gap:6px;margin-top:8px}
 .aj .pjAdd input{flex:1;min-width:0}
 .aj p.s{margin:0 0 10px;font-size:13px;color:var(--mute);line-height:1.5}
+/* Conta JARVIS */
+.aj .ct{border-color:color-mix(in oklab,var(--acc) 35%,var(--line))}
+.aj .ctr{display:flex;align-items:center;gap:12px;margin:4px 0 10px}
+.aj .ctr .ava{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--acc);color:#16120a;font:700 16px 'Montserrat',sans-serif;flex:none}
+.aj .ctr>span:nth-child(2){flex:1;min-width:0}
+.aj .ctr b{display:block;font-size:14.5px}
 </style>
 <script id="ajustes-js">
 /* Ajustes: Agenda do Jarvis (local), Skills (rotinas) e "Sobre você" no Perfil. */
@@ -3806,6 +3813,18 @@ ab.querySelector('#abSave').addEventListener('click',async()=>{
     note(ab.querySelector('#abOk'),'Guardado. Já levo isso em conta, senhor.')}catch(er){note(ab.querySelector('#abOk'),er.message,true)}
 });
 
+/* ---------- Conta JARVIS (a mesma do site): o app responde pela chave do servidor ---------- */
+const ct=H('div','ctWrap','<div class="card2 ct" id="ctBox"></div>');
+{const ph=pin.querySelector('.ph');if(ph)ph.after(ct);else pin.prepend(ct)}   // logo abaixo do título da aba
+function ctDraw(){const c=S.integ?.conta||{on:false},box=ct.querySelector('#ctBox'),own=!!(S.integ?.keys?.gemini?.configured);
+  box.innerHTML=c.on?`<h4>Conta JARVIS</h4><div class="ctr"><span class="ava">${esc((c.name||c.email||'?').trim()[0]?.toUpperCase()||'?')}</span>
+      <span><b>${esc(c.name||'Conectado')}</b><span class="s">${esc(c.email||'')}</span></span><button class="btn ghost" type="button" id="ctOut">Sair</button></div>
+    <p class="s">${own?'Você tem uma chave própria no .env: ela continua sendo usada primeiro. A conta entra quando ela falta.':'As respostas de IA vêm pela sua conta, com a chave do servidor. Nada de chave para configurar.'}</p>`
+    :`<h4>Conta JARVIS</h4><p class="s">Entre com a mesma conta do site (Google ou e-mail) e o Jarvis responde sem você precisar de uma chave de IA.${own?' Você já tem uma chave própria no .env, então isso é opcional.':''}</p>
+    <div class="bar"><a class="btn pri" href="/auth/conta">Entrar com a conta JARVIS</a><span class="ok" id="ctOk"></span></div>`;
+  ct.querySelector('#ctOut')?.addEventListener('click',async()=>{try{S.integ=await api('/api/conta/sair',{});renderInteg();ctDraw()}catch(er){flash(er.message)}})}
+window.__ctDraw=ctDraw;
+
 /* ---------- Projetos (memória entre conversas) ---------- */
 const pj=H('div','pjWrap',`<div class="card2"><h4>Novo projeto</h4>
   <p class="s">Todo arquivo que o Jarvis cria entra num projeto sozinho. Você também pode criar um e anotar o que ele deve lembrar: cores, público, prazos, decisões.
@@ -3838,8 +3857,8 @@ pj.querySelector('#pjL').addEventListener('click',async e=>{const b=e.target.clo
     pjLoad()}catch(er){note(pj.querySelector('#pjOk'),er.message,true)}});
 
 // Carrega quando o painel abre
-const _tp2=togglePanel;togglePanel=function(force){_tp2(force);if(!S.state?.web&&!document.getElementById('panel').hidden){agLoad();skLoad();pjLoad();abFill()}};
-setTimeout(()=>{if(!S.state?.web){agLoad();skLoad();pjLoad();abFill()}},1500);   // na web os Ajustes não existem
+const _tp2=togglePanel;togglePanel=function(force){_tp2(force);if(!S.state?.web&&!document.getElementById('panel').hidden){ctDraw();agLoad();skLoad();pjLoad();abFill()}};
+setTimeout(()=>{if(!S.state?.web){ctDraw();agLoad();skLoad();pjLoad();abFill()}},1500);   // na web os Ajustes não existem
 })();
 </script>
 <style id="beta-css">

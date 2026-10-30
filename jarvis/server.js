@@ -8,6 +8,7 @@ import * as correio from './lib/correio.js';
 import * as localcal from './lib/localcal.js';
 import * as skills from './lib/skills.js';
 import * as projects from './lib/projects.js';
+import * as conta from './lib/conta.js';
 import * as filemaker from './lib/filemaker.js';
 import { spawn } from 'node:child_process';
 import { log, redact } from './lib/secrets.js';
@@ -86,7 +87,7 @@ function briefGithub(s) {
 
 /* ---------- Estado para a interface (nada sensível) ---------- */
 function integrations() {
-  return { gmail: google.googleStatus(), canva: canva.canvaStatus(), keys: keys.allStatus(), actions: actions.allToggles(), images: images.imagesStatus(),
+  return { conta: conta.status(), gmail: google.googleStatus(), canva: canva.canvaStatus(), keys: keys.allStatus(), actions: actions.allToggles(), images: images.imagesStatus(),
     voice: { eleven: elevenReady(), voices: VOICES }, workspace: workspace.status(), mcp: mcp.status(), game: gameplay.status(), gameEnd: lastGameEnd, mascot: { connected: mascot.connected() }, launcher: { apps: launcher.customApps().map(a => ({ name: a.name, file: a.path.split(/[\/]/).pop() })), windows: process.platform === 'win32', installed: launcher.installedApps().length } };
 }
 function publicProfile(p) {
@@ -354,7 +355,7 @@ const speechHints = () => ['Jarvis', 'Jarvis Code', 'Discord', 'Steam', 'VS Code
 // Páginas do site (apresentação, login, download): iguais à CSP do app, mais o three.js do cdnjs para as cenas 3D.
 const CSP_SITE = CSP.replace("script-src 'self' 'unsafe-inline'", "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com");
 // Depois do login, só volta para páginas daqui ("/baixar", "/app"), nunca para outro site.
-const safeNext = n => /^\/(baixar|app)(\?[\w=&-]*)?$/.test(String(n || '')) ? String(n) : '/baixar';
+const safeNext = n => /^\/(baixar|app|conectar-app)(\?[\w=&-]*)?$/.test(String(n || '')) ? String(n) : '/baixar';
 const send = (res, code, data, type = 'application/json; charset=utf-8', extra = {}) => {
   res.writeHead(code, { 'Content-Type': type, ...SEC_HEADERS, ...extra });
   res.end(type.startsWith('application/json') ? redactJson(data) : data);
@@ -454,6 +455,64 @@ async function siteWeb(req, res, u, M) {
     webUse.set(q.k, (webUse.get(q.k) || 0) + 1);
     const out = await chat(models, prof, b.text.slice(0, 1000), '', { web: true, history: b.history });
     send(res, 200, { ...out, web: { left: q.left - 1, daily: web.daily } }); return true;
+  }
+  return false;
+}
+
+/* ---------- O app do PC com a conta do site ----------
+   1) No app, "Entrar com a conta JARVIS" abre /conectar-app no navegador; a pessoa entra (Google ou e-mail) e confirma.
+   2) O site manda um passe assinado (90 dias) de volta para o Jarvis do PC DELA (localhost: o passe não sai da máquina).
+   3) Com o passe, o app pede respostas ao Gemini por /api/nuvem/gemini: o site confere o passe e o modelo e usa a chave do
+      servidor. A chave nunca vai para o PC de ninguém. JARVIS_APP_AI=0 desliga; JARVIS_APP_MODELS = modelos permitidos. */
+const APP_AI = () => SITE_ONLY && process.env.JARVIS_APP_AI !== '0' && !!process.env.GEMINI_API_KEY;
+const appModels = () => new Set(String(process.env.JARVIS_APP_MODELS || 'gemini-3.5-flash-lite,gemini-3.8-flash').split(',').map(s => s.trim()).filter(Boolean));
+const escH = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function connectPage(who, st, porta) {
+  const ok = `/conectar-app/ok?state=${st}&porta=${porta}`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Conectar o app · JARVIS</title>
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/site.css"><style>
+main{min-height:100svh;display:grid;place-items:center;padding:24px}.box{width:min(460px,100%);padding:34px 30px;border:1px solid var(--line);border-radius:24px;background:var(--bg2);text-align:center}
+.box h1{margin:14px 0 8px;font:800 28px/1.15 'Montserrat',sans-serif;letter-spacing:-.02em}.box p{margin:0 0 22px;color:var(--mute)}.box b{color:var(--text)}
+.acts{display:grid;gap:10px}.pc{width:58px;height:58px;margin:0 auto;border-radius:16px;display:grid;place-items:center;background:color-mix(in oklab,var(--acc) 16%,transparent);color:var(--acc)}
+.pc svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}small{display:block;margin-top:16px;color:var(--dim);font-size:12.5px}</style></head>
+<body><main><div class="box"><div class="pc"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+<h1>Conectar este computador?</h1><p>O JARVIS do seu PC vai entrar como <b>${escH(who.name || who.email)}</b>${who.email ? ` (${escH(who.email)})` : ''} e responder usando a sua conta.</p>
+<div class="acts"><a class="btn pri" href="${ok}">Conectar o app</a><a class="btn" href="/">Cancelar</a></div>
+<small>Só funciona com o JARVIS aberto neste computador. Para desconectar, use Ajustes → Conexões no app.</small></div></main></body></html>`;
+}
+async function siteApp(req, res, u, M) {
+  const p = u.pathname;
+  if (M === 'GET' && (p === '/conectar-app' || p === '/conectar-app/ok')) {
+    const st = String(u.searchParams.get('state') || ''), porta = Number(u.searchParams.get('porta'));
+    if (!/^[\w-]{16,64}$/.test(st) || !Number.isInteger(porta) || porta < 1024 || porta > 65535) throw new HttpError(400, 'Link de conexão inválido. Volte ao app e clique em "Entrar" de novo.');
+    const who = users.userFromReq(req);
+    if (!who) { redirect(res, '/entrar?next=' + encodeURIComponent(`/conectar-app?state=${st}&porta=${porta}`)); return true; }
+    // O passe só vai para o próprio computador da pessoa (localhost), nunca para outro endereço.
+    if (p === '/conectar-app/ok') { redirect(res, `http://localhost:${porta}/auth/conta/volta?state=${st}&token=${users.appToken(who)}`); return true; }
+    send(res, 200, connectPage(who, st, porta), 'text/html; charset=utf-8', { 'Content-Security-Policy': CSP_SITE }); return true;
+  }
+  if (M === 'GET' && p === '/api/nuvem/eu') {
+    const who = users.appUser(req);
+    if (!who) throw new HttpError(401, 'Passe do app inválido ou vencido. Entre de novo pelo app.');
+    send(res, 200, { user: who, ia: APP_AI() }); return true;
+  }
+  if (M === 'POST' && p === '/api/nuvem/gemini') {
+    const who = users.appUser(req);
+    if (!who) throw new HttpError(401, 'Passe do app inválido ou vencido. Entre de novo pelo app.');
+    if (!APP_AI()) throw new HttpError(503, 'A IA pela conta está desligada no momento.');
+    const b = await readBody(req, 4_400_000);   // a Vercel aceita até ~4,5 MB por pedido
+    const model = String(b.model || '');
+    if (!appModels().has(model)) throw new HttpError(403, 'Esse modelo não está liberado para o app.');
+    if (!b.request || typeof b.request !== 'object' || !Array.isArray(b.request.contents)) throw new HttpError(400, 'Pedido inválido.');
+    let r;
+    try {
+      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST', signal: AbortSignal.timeout(55_000), headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY, 'content-type': 'application/json' }, body: JSON.stringify(b.request) });
+    } catch (e) { throw new HttpError(e?.name === 'TimeoutError' ? 504 : 502, 'O Gemini não respondeu a tempo.'); }
+    const j = await r.json().catch(() => ({}));
+    const extra = r.headers.get('retry-after') ? { 'Retry-After': r.headers.get('retry-after') } : {};
+    // Repassa a resposta do Gemini como veio (o app trata cota, erro e texto do mesmo jeito que com chave própria).
+    send(res, r.status, j, 'application/json; charset=utf-8', extra); return true;
   }
   return false;
 }
@@ -1040,6 +1099,7 @@ async function route(req, res, u) {
   if (SITE_ONLY) {
     const p = u.pathname, M0 = HM;
     if (await siteWeb(req, res, u, M0)) return;   // teste do Jarvis na web (só conversa), para quem tem conta
+    if (await siteApp(req, res, u, M0)) return;   // o app do PC entrando com a conta e pedindo IA pelo servidor
     if (M0 === 'GET' && (p === '/app' || p === '/index.html' || p === '/correio')) return redirect(res, '/windows');   // o assistente roda no app instalado
     if (!((M0 === 'GET' || M0 === 'HEAD') && SITE_GET.test(p)) && !(M0 === 'POST' && SITE_POST.test(p)))
       throw new HttpError(404, 'Isso só existe no Jarvis instalado no seu computador.');
@@ -1149,7 +1209,7 @@ async function route(req, res, u) {
   }
   if (M === 'POST' && url === '/api/correio/vistos') { correio.markSeen(); return send(res, 200, { ok: true }); }
   if (M === 'POST' && url === '/api/correio/abrir') { correioOpen(null); return send(res, 200, { ok: true, desktop: mascot.connected() }); }
-  if (M === 'GET' && url === '/api/health') return send(res, 200, { ok: true, chat: keys.hasKey('gemini') || keys.hasKey('anthropic'), voice: true, eleven: keys.status('elevenlabs').configured });
+  if (M === 'GET' && url === '/api/health') return send(res, 200, { ok: true, chat: keys.hasKey('gemini') || keys.hasKey('anthropic') || conta.active(), voice: true, eleven: keys.status('elevenlabs').configured });
   if (M === 'GET' && url === '/api/state') return send(res, 200, state());
   if (M === 'GET' && url === '/api/integrations') return send(res, 200, integrations());
 
@@ -1181,6 +1241,13 @@ async function route(req, res, u) {
   }
 
   // Google (Gmail somente leitura)
+  // Conta JARVIS (a mesma do site): "Entrar" abre o site no navegador; ele devolve o passe para cá.
+  if (M === 'GET' && url === '/auth/conta') return redirect(res, conta.start(PORT));
+  if (M === 'GET' && url === '/auth/conta/volta') {
+    try { await conta.finish(u.searchParams.get('state'), u.searchParams.get('token')); return redirect(res, '/app?conta=ok'); }
+    catch (e) { return redirect(res, '/app?conta=erro&msg=' + encodeURIComponent(String(e.message).slice(0, 140))); }
+  }
+  if (M === 'POST' && url === '/api/conta/sair') { conta.logout(); return send(res, 200, integrations()); }
   if (M === 'GET' && url === '/auth/google') {
     if (!google.googleConfigured()) return redirect(res, '/app?gmail=config');
     return redirect(res, google.authRedirect());
@@ -1550,7 +1617,7 @@ if (process.env.JARVIS_NO_LISTEN !== '1') {
     launcher.OPEN.autoRefresh = true;
     if (mcp.count()) mcp.ensureAll().then(() => log.info(`Servidores MCP: ${mcp.status().filter(x => x.state === 'conectado').length} conectado(s).`));
     launcher.refreshInstalled(true).then(l => { if (l.length) log.info(`Apps instalados encontrados: ${l.length}.`); });
-    if (!keys.hasKey('gemini') && !keys.hasKey('anthropic')) log.warn('Aviso: nenhuma chave de IA. Salve uma nos ajustes (topo da tela) ou no .env.');
+    if (!keys.hasKey('gemini') && !keys.hasKey('anthropic') && !conta.active()) log.warn('Aviso: nenhuma chave de IA. Salve uma nos ajustes (topo da tela) ou no .env.');
     if (startVoiceStudioWarmup()) log.info(`Voz: VoiceStudio (${process.env.VOICESTUDIO_VOICE}), mantido aquecido; Microsoft de reserva.`);
     else log.info('Voz: voz neural da Microsoft (Antonio, pt-BR).');
   });

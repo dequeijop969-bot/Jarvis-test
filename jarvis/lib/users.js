@@ -230,6 +230,22 @@ export async function googleFinish(code, pkceCookie) {
   return { user: u, next: st.n };
 }
 
+/* ---------- Passe do app (o Jarvis do PC entra com a conta do site) ----------
+   O site entrega ao app do PC um passe assinado (90 dias) com quem é a pessoa. Com ele, o app pede respostas de IA ao
+   site, que usa a chave do servidor: a chave nunca vai para o PC de ninguém. */
+export const APP_TTL = 90 * 24 * 3600_000;
+export function appToken(user) {
+  return sign(Buffer.from(JSON.stringify({ k: 'app', u: user.id, n: user.name, e: user.email, exp: Date.now() + APP_TTL })).toString('base64url'));
+}
+export function appUser(req) {
+  const m = String(req.headers.authorization || '').match(/^Bearer ([A-Za-z0-9_-]{20,900}\.[A-Za-z0-9_-]{40,60})$/);
+  if (!m) return null;
+  let d; try { d = unsign(m[1]); } catch { return null; }
+  if (!d || d.k !== 'app' || !(d.exp > Date.now()) || typeof d.u !== 'string') return null;
+  if (d.u === 'dono') return publicUser(owner());
+  return d.u.startsWith('sb_') ? { id: d.u, name: String(d.n || ''), email: String(d.e || '') } : null;
+}
+
 export function siteToken(user) {
   const u = typeof user === 'object' && user ? user : { id: user };
   const d = u.id === 'dono' ? { u: 'dono' } : { u: u.id, n: u.name, e: u.email };
@@ -245,6 +261,7 @@ export function siteUser(req) {
   try {
     const d = JSON.parse(Buffer.from(body, 'base64url').toString());
     if (!(d.exp > Date.now())) return null;
+    if (d.k) return null;   // passe do app (k: 'app') ou outro tipo assinado: não vale como sessão do site
     if (d.u === 'dono') return publicUser(owner());
     return typeof d.u === 'string' && d.u.startsWith('sb_') ? { id: d.u, name: String(d.n || ''), email: String(d.e || '') } : null;
   } catch { return null; }

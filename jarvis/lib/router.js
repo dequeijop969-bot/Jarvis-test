@@ -2,6 +2,7 @@
 // 429/5xx: até 3 tentativas com espera exponencial; depois plano B (mesmo provedor) e, por fim, a reserva.
 import crypto from 'node:crypto';
 import { getKey } from './keys.js';
+import * as conta from './conta.js';
 import { log } from './secrets.js';
 
 export class ProviderError extends Error {
@@ -36,29 +37,39 @@ export function parseQuotaError(j, headerRetry = 0) {
 
 const b64 = d => String(d).replace(/^data:image\/jpeg;base64,/, '');
 // Imagens de uma mensagem: a da tela (image) e as que você mandou (images), até 8.
+// A conta JARVIS (lib/conta.js) cobre o Gemini principal quando não há chave própria. Nunca a chave paga (nível 5.1).
+export const cloudOk = p => p === 'gemini' && conta.active();
 const imagesOf = m => [...(m.image ? [m.image] : []), ...(Array.isArray(m.images) ? m.images : [])].slice(0, 8);
 async function callGemini(t, req) {
   const { system, messages, json, maxTokens } = req;
   const key = getKey(t.provider);   // gemini2: a segunda chave, cota própria; geminipago: a chave com faturamento (nível 5.1)
-  if (!key) throw new ProviderError(t.provider, -1, 'Sem chave do Gemini.');
+  // Sem chave própria, mas com a conta JARVIS conectada: o pedido vai pelo site, que usa a chave do servidor.
+  const viaConta = !key && cloudOk(t.provider);
+  if (!key && !viaConta) throw new ProviderError(t.provider, -1, 'Sem chave do Gemini.');
   const generationConfig = { maxOutputTokens: maxTokens || 8192 };
   if (t.reasoning) generationConfig.thinkingConfig = { thinkingLevel: t.reasoning };
   if (json) generationConfig.responseMimeType = 'application/json';
+  const request = {
+    systemInstruction: { parts: [{ text: system }] },
+    contents: messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }, ...imagesOf(m).map(d => ({ inlineData: { mimeType: 'image/jpeg', data: b64(d) } })),
+      ...(m.audio ? [{ inlineData: { mimeType: m.audio.mime, data: m.audio.data } }] : []),
+      ...(m.pdfs || []).map(p => ({ inlineData: { mimeType: 'application/pdf', data: p.data } }))] })),
+    generationConfig
+  };
   let r;
   try {
-    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(t.model)}:generateContent`, {
-      method: 'POST', signal: AbortSignal.timeout(req.timeout || ROUTER.timeoutMs),
-      headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents: messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }, ...imagesOf(m).map(d => ({ inlineData: { mimeType: 'image/jpeg', data: b64(d) } })),
-          ...(m.audio ? [{ inlineData: { mimeType: m.audio.mime, data: m.audio.data } }] : []),
-          ...(m.pdfs || []).map(p => ({ inlineData: { mimeType: 'application/pdf', data: p.data } }))] })),
-        generationConfig
-      })
-    });
-  } catch (e) { throw new ProviderError(t.provider, e?.name === 'TimeoutError' ? 504 : 0, e?.name === 'TimeoutError' ? 'O Gemini demorou demais.' : 'Sem conexão com o Gemini.'); }
+    r = viaConta ? await conta.gemini(t.model, request, req.timeout || ROUTER.timeoutMs)
+      : await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(t.model)}:generateContent`, {
+        method: 'POST', signal: AbortSignal.timeout(req.timeout || ROUTER.timeoutMs),
+        headers: { 'x-goog-api-key': key, 'content-type': 'application/json' }, body: JSON.stringify(request) });
+  } catch (e) { throw new ProviderError(t.provider, e?.name === 'TimeoutError' ? 504 : 0, e?.name === 'TimeoutError' ? 'O Gemini demorou demais.' : viaConta ? 'Sem conexão com o site do JARVIS.' : 'Sem conexão com o Gemini.'); }
   const j = await r.json().catch(() => ({}));
+  // Recusas do próprio site (passe vencido, modelo não liberado, pedido grande demais): mensagem clara, sem insistir.
+  if (viaConta && !r.ok && !j.error?.details && j.error && typeof j.error === 'string') {
+    const msg = r.status === 401 ? 'A sua conta JARVIS saiu deste app. Entre de novo em Ajustes → Conexões.'
+      : r.status === 413 ? 'Esse pedido ficou grande demais para ir pela conta (o limite é uns 4 MB). Tente com arquivos menores.' : j.error;
+    throw new ProviderError('gemini', -1, msg);
+  }
   if (!r.ok) {
     const q = r.status === 429 ? parseQuotaError(j, r.headers.get('retry-after')) : { retryAfter: Number(r.headers.get('retry-after')) || 0, quota: null };
     throw new ProviderError('gemini', r.status, null, q.retryAfter, q.quota);
@@ -151,8 +162,8 @@ export async function generate(models, levelId, { system, messages, json = true,
   push(models.reserve, 'reserve');
   // Sem nível configurado: tenta o padrão antes da reserva.
   if (!level?.ok) { const d = models.levels[models.defaultLevel]; push(d?.primary, 'fallback'); (d?.fallback || []).forEach(f => push(f, 'fallback')); }
-  const usable = chain.filter(t => getKey(t.provider));
-  if (!usable.length) throw new ProviderError('router', -1, 'Nenhum provedor de IA configurado. Salve uma chave do Gemini ou da Anthropic nos ajustes.');
+  const usable = chain.filter(t => getKey(t.provider) || cloudOk(t.provider));
+  if (!usable.length) throw new ProviderError('router', -1, 'Ainda não tenho como responder: entre com a sua conta JARVIS em Ajustes → Conexões (ou coloque uma chave do Gemini no .env).');
 
   const ck = cacheTtl ? crypto.createHash('sha256').update(JSON.stringify([levelId, system, messages, json])).digest('hex') : null;
   if (ck) { const hit = cacheGet(ck); if (hit) return { ...hit, meta: { ...hit.meta, cached: true } }; }
