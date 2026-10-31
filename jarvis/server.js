@@ -1005,6 +1005,7 @@ async function siteApp(req, res, u, M) {
     const raw = await readRaw(req);
     if (!wabot.on() || !wabot.verifySig(raw, req.headers['x-hub-signature-256'])) throw new HttpError(401, 'Assinatura inválida.');
     let body; try { body = JSON.parse(raw.toString('utf8')); } catch { throw new HttpError(400, 'JSON inválido.'); }
+    for (const f of wabot.failures(body)) log.warn(`[whatsapp] entrega falhou para ••${f.to}: ${f.code} ${f.title}${f.detail ? ' · ' + f.detail : ''}`);
     for (const m of wabot.messages(body)) { try { await waIncoming(m); } catch (e) { log.warn('[whatsapp] mensagem falhou:', e.message); } }
     send(res, 200, { ok: true }); return true;
   }

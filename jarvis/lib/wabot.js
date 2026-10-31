@@ -80,6 +80,15 @@ export function messages(body) {
   }
   return out;
 }
+// Entregas que falharam depois de aceitas (a Meta avisa por "statuses"): o motivo vai para o log.
+export function failures(body) {
+  const out = [];
+  for (const e of body?.entry || []) for (const c of e.changes || []) for (const s of c.value?.statuses || []) {
+    if (s.status !== 'failed') continue;
+    for (const er of s.errors?.length ? s.errors : [{}]) out.push({ to: String(s.recipient_id || '').slice(-4), code: er.code, title: er.title || er.message || '', detail: er.error_data?.details || '' });
+  }
+  return out;
+}
 // Já atendida? (a Meta reenvia o mesmo aviso se a resposta demora)
 export async function firstTime(id) {
   const r = await db('jarvis_wa_msgs', { method: 'POST', prefer: 'resolution=ignore-duplicates,return=representation', body: { id: String(id).slice(0, 200) } });
