@@ -26,8 +26,9 @@ console.log('intents(tela): ok');
 for (const f of [
   'Marque um compromisso chamado melhoria no site do jarvis para hoje as 11:59 da noite',
   'marque uma reunião com o cliente amanhã às 15',
-  'me lembra de pagar a conta amanhã às 9',
 ]) assert.equal(k(f), 'agenda_create', f);
+// "me lembra ... às 9" agora é lembrete com aviso na hora (lib/reminders.js), não compromisso na agenda.
+assert.equal(k('me lembra de pagar a conta amanhã às 9'), 'reminder');
 for (const f of ['o que tenho na agenda hoje', 'quais compromissos eu tenho hoje', 'agenda livre hoje?'])
   assert.equal(k(f), 'agenda', f);
 assert.equal(k('me ajuda a preparar uma reunião'), null);

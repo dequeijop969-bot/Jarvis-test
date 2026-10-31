@@ -208,3 +208,13 @@ export async function zipImages(ids) {
   ok.push({ name: 'CREDITOS.txt', buf: Buffer.from(`Imagens exportadas pelo JARVIS · busca: "${q}" · ${new Date().toLocaleString('pt-BR')}\nConfira a licença de cada imagem antes de publicar.\n\n${credits.filter(Boolean).join('\n\n')}\n`, 'utf8') });
   return { buf: zip(ok), name: `jarvis-${slug(q)}.zip`, count: ok.length - 1, skipped: skipped.length };
 }
+
+// Registra uma foto já conhecida (ex.: a imagem de uma notícia) para o app exibir por /api/images/<id>/file,
+// com o mesmo download seguro das buscas (só endereços públicos).
+export function registerUrl(url, { title = '', source = '', page = '' } = {}) {
+  const u = okUrl(url); if (!u) return null;
+  prune();
+  const id = randomBytes(8).toString('hex');
+  reg.set(id, { id, url: u, thumb: u, title: clean(title) || 'foto', source: clean(source, 60), page: okUrl(page), width: null, height: null, license: '', creator: '', query: '', exp: Date.now() + TTL });
+  return { id, title: clean(title) || 'foto', source: clean(source, 60), page: okUrl(page) };
+}

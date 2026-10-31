@@ -477,7 +477,7 @@ figcaption .ctype{margin-left:auto;font:400 13px var(--mono);color:var(--mute);l
 <section id="panel" hidden aria-label="Ajustes">
   <div class="pin">
     <div><h2>Contas</h2><div class="rows" id="accRows"></div></div>
-    <div><h2>Perfil e modelos</h2><div class="rows">
+    <div><h2>Perfil e nível</h2><div class="rows">
       <div class="row"><span class="nm">Perfil</span><span class="stl"><span class="stx" id="pfSum"></span></span><span class="acts"><button class="btn" type="button" id="pfEdit">Editar perfil</button></span></div>
       <div class="row"><span class="nm">Níveis</span><span class="stl"><span class="stx" id="lvSum"></span></span><span></span></div>
     </div><div id="mWarn"></div></div>
@@ -1117,6 +1117,10 @@ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const MINI=new URLSearchParams(location.search).has('mini');if(MINI)document.body.classList.add('mini');
 const audio=new Audio();audio.preload='auto';
 let actx=null,outAn=null,micAn=null,micStream=null;
+// Celular (Android/iPhone): o reconhecimento de voz do navegador não divide o microfone. Se a página segurar o microfone
+// (anel da voz, gravação da segunda opinião), ele fica surdo. Lá o app só pede a permissão e solta o microfone na hora,
+// e ouve uma frase por vez (o modo contínuo do Android repete e perde palavras).
+const MOBILE=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&matchMedia('(pointer: coarse)').matches);
 let on=false,mode='idle',run=0,rec=null,cache=new Map(),voiceWarned=false;
 const LABEL=()=>({idle:S.started?withAddr('Toque no círculo para conversar'):'Toque em Iniciar ou no círculo',listen:withAddr('Ouvindo')+'…',think:'Pensando…',speak:'Falando. Toque no círculo para interromper'});
 const ARIA={idle:'Começar a conversar',listen:'Ouvindo. Toque para parar',think:'Pensando. Toque para cancelar',speak:'Falando. Toque para interromper'};
@@ -1132,13 +1136,14 @@ function initAudio(){
     src.connect(outAn);outAn.connect(actx.destination)}catch{actx=null;outAn=null}
 }
 async function initMic(){
-  if(micStream)return true;
+  if(micStream||window.__micOk)return true;
   if(!navigator.mediaDevices?.getUserMedia)return true;
   try{micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}
   catch(e){
     const msg=e.name==='NotAllowedError'||e.name==='SecurityError'?'Microfone bloqueado. Libere no cadeado da barra de endereço.':
       e.name==='NotFoundError'?'Nenhum microfone encontrado.':e.name==='NotReadableError'?'O microfone está em uso por outro app.':'Não consegui acessar o microfone.';
     flash(msg,true);return false}
+  if(MOBILE){try{micStream.getTracks().forEach(t=>t.stop())}catch{}micStream=null;micAn=null;window.__micOk=true;return true}   // permissão dada; microfone livre para o reconhecimento
   try{if(actx){const m=actx.createMediaStreamSource(micStream);micAn=actx.createAnalyser();micAn.fftSize=128;micAn.smoothingTimeConstant=.6;m.connect(micAn)}}catch{}
   return true;
 }
@@ -1301,8 +1306,9 @@ function renderLevels(){
   sel.replaceChildren(...S.levels.map(l=>{const o=document.createElement('option');o.value=l.id;o.disabled=!l.ok;
     o.textContent=`${l.id} · ${l.ok?l.label:'indisponível'}${l.id===cur?b:''}`;o.title=`${NAME} ${l.id}: ${l.label}`;o.selected=l.id===cur;return o}));
   sel.classList.toggle('warn',!!b);
-  $('#lvSum').textContent=S.levels.map(l=>`${l.name}: ${l.ok?`${l.provider} / ${l.model}`:'a definir'}`).join(' · ');
-  const w=S.state.modelWarnings||[];$('#mWarn').replaceChildren(...w.map(t=>{const p=document.createElement('p');p.className='warn';p.textContent=t;return p}));
+  // Só o nível e a descrição (sem nome de modelo, sem avisos técnicos)
+  $('#lvSum').textContent=S.levels.filter(l=>l.ok).map(l=>`${l.name}: ${l.label}`).join(' · ');
+  $('#mWarn').replaceChildren();
   const L=S.levels.find(l=>l.id===cur);
   sel.title=`Modelo da conversa: ${L?`${L.name} (${L.model})`:'padrão'}${m?.model?` · última resposta: ${m.model}`:''}. Arquivos usam o 5.1 quando ele tem chave.`;
 }
@@ -1662,7 +1668,7 @@ const VoiceRec={node:null,buf:[],rate:48000,on:false,
 function listen(){
   if(!on)return;setMode('listen');$('#you').textContent='';
   try{rec?.abort()}catch{}
-  rec=new SR();rec.lang=S.profile?.lang||'pt-BR';rec.interimResults=true;rec.continuous=true;rec.maxAlternatives=4;
+  rec=new SR();rec.lang=S.profile?.lang||'pt-BR';rec.interimResults=true;rec.continuous=!MOBILE;rec.maxAlternatives=MOBILE?1:4;
   const segs=[];let interim='',fatal=false,quiet=null,cap=null;
   const text=()=>(segs.filter(Boolean).map(s=>s[0].text).join(' ')+' '+interim).replace(/\s+/g,' ').trim();
   const finish=()=>{clearTimeout(quiet);clearTimeout(cap);try{rec.stop()}catch{}};
@@ -1738,7 +1744,9 @@ function handleQuery(){
   const M={ok:'Gmail conectado, somente leitura.',erro:'Não consegui conectar o Gmail. Tente de novo.',config:'Para conectar o Gmail, configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no .env (veja o README).'};
   const C={ok:'Canva conectado.',erro:'Não consegui conectar o Canva.',config:'Canva ainda não configurado.'};
   if(g&&M[g])flash(M[g],g!=='ok');if(c&&C[c])flash(C[c]);
-  if(g||c)history.replaceState(null,'','/app');
+  const sp=q.get('spotify'),SP={ok:'Spotify conectado. Peça "toca minha playlist de foco" ou "o que está tocando?".',erro:'Não consegui conectar o Spotify. Tente de novo.',config:'Coloque SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no .env.'};
+  if(sp&&SP[sp])flash(SP[sp],sp!=='ok');
+  if(g||c||sp)history.replaceState(null,'','/app');
 }
 /* Teste na web (site publicado): só conversa. O que é do PC (ajustes, modo Code, agenda, e-mails, arquivos) some, a conversa
    anterior fica neste navegador (vai junto em cada pedido) e a barra mostra quantas mensagens ainda restam hoje. */
@@ -1760,7 +1768,7 @@ async function boot(){
   refreshWeather();setInterval(refreshWeather,30*60_000);
   const k=S.integ.keys,qs=new URLSearchParams(location.search);
   if(qs.get('conta')){flash(qs.get('conta')==='ok'?withAddr(`Conta conectada${S.integ.conta?.name?': '+S.integ.conta.name:''}. Às suas ordens`)+'.':(qs.get('msg')||'Não consegui conectar a conta.'),qs.get('conta')!=='ok');history.replaceState(null,'',location.pathname+(MINI?'?mini=1':''))}
-  else if(!k.gemini.configured&&!k.anthropic.configured&&!S.integ.conta?.on)flash(withAddr('Entre com a sua conta JARVIS em Ajustes → Conexões e eu começo a responder')+'.',true);
+  else if(!k.gemini?.configured&&!k.anthropic?.configured&&!S.integ.conta?.on)flash(withAddr('Entre com a sua conta JARVIS em Ajustes → Conexões e eu começo a responder')+'.',true);
   if(!SR)flash('Seu navegador não reconhece voz. Use o Chrome ou o Edge.',true);
 }
 boot();
@@ -1783,6 +1791,12 @@ function showAction(a){
     d.addEventListener('click',async e=>{const x=e.target.dataset&&e.target.dataset.x;
       if(x==='no'){try{await api('/api/actions/'+a.id+'/cancel')}catch{}closeSheet()}
       if(x==='yes'){e.target.disabled=true;try{await api('/api/actions/'+a.id+'/confirm',{via:'touch'});closeSheet();flash('Marcado na agenda.')}catch(er){closeSheet();flash(er.message||'Não consegui marcar o compromisso.')}}});
+    return}
+  if(a.kind==='pc_power'){
+    const d=sheet('<h3>'+esc(a.preview||'Desligar o PC?')+'</h3><p>Salve o que estiver aberto. Dá para desistir dizendo "cancela o desligamento".</p><div class="sheet-acts"><button class="btn" data-x="no">Cancelar</button><button class="btn pri" data-x="yes">Confirmar</button></div>');
+    d.addEventListener('click',async e=>{const x=e.target.dataset&&e.target.dataset.x;
+      if(x==='no'){try{await api('/api/actions/'+a.id+'/cancel')}catch{}closeSheet()}
+      if(x==='yes'){e.target.disabled=true;try{await api('/api/actions/'+a.id+'/confirm',{via:'touch'});closeSheet();flash('Combinado. Diga "cancela o desligamento" para desistir.')}catch(er){closeSheet();flash(er.message||'O Windows não deixou.')}}});
     return}
   if(a.kind==='files_trash'){
     const n=(a.preview||[]).length;
@@ -1817,9 +1831,11 @@ card=function(e,small){const li=_card(e,small),acts=li.querySelector('.acts');
   return li};
 
 // Ajustes em cartões (ícones originais)
-const IC={mail:'<path d="M3 6h18v12H3z"/><path d="m3 7 9 7 9-7"/>',cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',git:'<circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="9" r="2.2"/><path d="M6 8.2v7.6M18 11.2c0 4-6 2-12 5"/>',gitw:'<circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><path d="M6 8.2v7.6M13 6h6M16 3v6"/>',eye:'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',pen:'<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="m14 7 3 3"/>'};
+const IC={mail:'<path d="M3 6h18v12H3z"/><path d="m3 7 9 7 9-7"/>',music:'<path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',git:'<circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="9" r="2.2"/><path d="M6 8.2v7.6M18 11.2c0 4-6 2-12 5"/>',gitw:'<circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><path d="M6 8.2v7.6M13 6h6M16 3v6"/>',eye:'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',pen:'<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="m14 7 3 3"/>'};
 let ghOpen=null;
-const card1=(o)=>'<div class="cn"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true">'+IC[o.ic]+'</svg></span><div><h4>'+o.nm+(o.on?'<i class="vf" title="Conectado">✓</i>':'')+'</h4><p>'+o.ds+'</p><p class="by">por '+o.by+'</p>'+(o.extra||'')+'</div><div class="cg">'+o.btn+'</div></div>';
+// Logotipos dos serviços (coloridos) nos cartões; o que não é marca (ex.: visão da tela) segue com o ícone de traço.
+const BR={"drive":"<path fill=\"#0066da\" d=\"M3.6 18.4l1 1.7c.2.4.5.7.9.9l3.6-6.2H2c0 .4.1.8.3 1.2z\"/><path fill=\"#00ac47\" d=\"M12 8.7L8.4 2.5c-.4.2-.7.5-.9.9L2.3 12.6c-.2.4-.3.8-.3 1.2h7.1z\"/><path fill=\"#ea4335\" d=\"M18.5 21c.4-.2.7-.5.9-.9l.4-.7 2-3.4c.2-.4.3-.8.3-1.2h-7.1l1.5 3z\"/><path fill=\"#00832d\" d=\"M12 8.7l3.6-6.2c-.4-.2-.8-.3-1.2-.3H9.6c-.4 0-.8.1-1.2.3z\"/><path fill=\"#2684fc\" d=\"M14.9 14.8H9.1L5.5 21c.4.2.8.3 1.2.3h10.6c.4 0 .8-.1 1.2-.3z\"/><path fill=\"#ffba00\" d=\"M18.5 9.1l-3.3-5.7c-.2-.4-.5-.7-.9-.9L10.7 8.7l4.2 6.1H22c0-.4-.1-.8-.3-1.2z\"/>","tasks":"<circle cx=\"12\" cy=\"12\" r=\"10\" fill=\"#1a73e8\"/><path d=\"M7.5 12.3l3 3 6-6.3\" fill=\"none\" stroke=\"#fff\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>","mail":"<path fill=\"#4285F4\" d=\"M2 6.5V18a1.5 1.5 0 0 0 1.5 1.5H6V10z\"/><path fill=\"#34A853\" d=\"M18 19.5h2.5A1.5 1.5 0 0 0 22 18V6.5L18 10z\"/><path fill=\"#EA4335\" d=\"M6 10V5.2l6 4.5 6-4.5V10l-6 4.5z\"/><path fill=\"#FBBC04\" d=\"M18 5.2V10l4-3.5v-.8c0-1.4-1.6-2.2-2.7-1.4z\"/><path fill=\"#C5221F\" d=\"M2 5.7v.8L6 10V5.2l-1.3-.9C3.6 3.5 2 4.3 2 5.7z\"/>","cal":"<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"3\" fill=\"#fff\"/><path fill=\"#4285F4\" d=\"M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v2H3z\"/><path fill=\"#EA4335\" d=\"M21 16.5V18a3 3 0 0 1-3 3h-1.5z\"/><path fill=\"#34A853\" d=\"M3 16.5V18a3 3 0 0 0 3 3h1.5z\"/><text x=\"12\" y=\"18\" text-anchor=\"middle\" font-family=\"Montserrat,Arial,sans-serif\" font-weight=\"700\" font-size=\"8.5\" fill=\"#1a73e8\">31</text>","git":"<path fill=\"#f1efe9\" d=\"M12 2.5a9.5 9.5 0 0 0-3 18.5c.5.1.7-.2.7-.5v-1.7c-2.7.6-3.3-1.2-3.3-1.2-.4-1.1-1.1-1.4-1.1-1.4-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.3-1.1.6-1.3-2.1-.2-4.4-1.1-4.4-4.7 0-1 .4-1.9 1-2.6-.1-.2-.4-1.2.1-2.5 0 0 .8-.3 2.6 1a9 9 0 0 1 4.8 0c1.8-1.3 2.6-1 2.6-1 .5 1.3.2 2.3.1 2.5.6.7 1 1.6 1 2.6 0 3.6-2.3 4.5-4.4 4.7.3.3.6.9.6 1.8v2.6c0 .3.2.6.7.5A9.5 9.5 0 0 0 12 2.5z\"/>","gitw":"<path fill=\"#f1efe9\" d=\"M12 2.5a9.5 9.5 0 0 0-3 18.5c.5.1.7-.2.7-.5v-1.7c-2.7.6-3.3-1.2-3.3-1.2-.4-1.1-1.1-1.4-1.1-1.4-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.3-1.1.6-1.3-2.1-.2-4.4-1.1-4.4-4.7 0-1 .4-1.9 1-2.6-.1-.2-.4-1.2.1-2.5 0 0 .8-.3 2.6 1a9 9 0 0 1 4.8 0c1.8-1.3 2.6-1 2.6-1 .5 1.3.2 2.3.1 2.5.6.7 1 1.6 1 2.6 0 3.6-2.3 4.5-4.4 4.7.3.3.6.9.6 1.8v2.6c0 .3.2.6.7.5A9.5 9.5 0 0 0 12 2.5z\"/><circle cx=\"19\" cy=\"19\" r=\"4.2\" fill=\"#f2b33d\"/><path d=\"M17.2 20.8l.4-1.6 2.6-2.6 1.2 1.2-2.6 2.6z\" fill=\"#16120a\"/>","music":"<circle cx=\"12\" cy=\"12\" r=\"10\" fill=\"#1DB954\"/><path d=\"M6.6 9.2c3.6-1 7.8-.7 11 1M7.2 12.4c3-.8 6.4-.5 9 .9M8 15.4c2.4-.6 4.8-.4 6.8.7\" fill=\"none\" stroke=\"#0b0c0f\" stroke-width=\"1.7\" stroke-linecap=\"round\"/>","pen":"<defs><linearGradient id=\"cvg\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" stop-color=\"#00c4cc\"/><stop offset=\".55\" stop-color=\"#7d2ae8\"/><stop offset=\"1\" stop-color=\"#6420ff\"/></linearGradient></defs><circle cx=\"12\" cy=\"12\" r=\"10\" fill=\"url(#cvg)\"/><text x=\"12\" y=\"16.2\" text-anchor=\"middle\" font-family=\"Georgia,serif\" font-style=\"italic\" font-weight=\"700\" font-size=\"11\" fill=\"#fff\">C</text>"};
+const card1=(o)=>'<div class="cn"><span class="ic'+(BR[o.ic]?' brand':'')+'">'+(BR[o.ic]?'<svg class="brand" viewBox="0 0 24 24" aria-hidden="true">'+BR[o.ic]+'</svg>':'<svg viewBox="0 0 24 24" aria-hidden="true">'+IC[o.ic]+'</svg>')+'</span><div><h4>'+o.nm+(o.on?'<i class="vf" title="Conectado">✓</i>':'')+'</h4><p>'+o.ds+'</p><p class="by">por '+o.by+'</p>'+(o.extra||'')+'</div><div class="cg">'+o.btn+'</div></div>';
 const plus=(href,off)=>off?'<span class="go" aria-disabled="true">+</span>':'<a class="go" href="'+href+'" aria-label="Conectar">+</a>';
 const okb=(act,label)=>'<button class="go ok" type="button" data-x="'+act+'" aria-label="'+label+'" title="'+label+'">✓</button>';
 const tgl=(k,t)=>{const v=!!(S.integ.actions||{})[k];return '<p class="tg"><button class="btn'+(v?' pri':'')+'" type="button" data-x="tg" data-k="'+k+'" aria-pressed="'+v+'">'+t+': '+(v?'ligado':'desligado')+'</button></p>'};
@@ -1833,16 +1849,19 @@ renderInteg=function(){_ri();const host=$('#accRows');if(!host||!S.integ)return;
   let cx=document.getElementById('cx');if(!cx){cx=document.createElement('div');cx.id='cx';host.before(cx)}
   const gOn=g.state==='on',cOn=gOn&&g.calendar;
   cx.innerHTML=
-   card1({ic:'mail',nm:'Gmail',on:gOn,by:'Google',ds:gOn?(g.trash?'Lê e move para a lixeira sob pedido':'Só leitura. Reautorize para liberar a lixeira')+(g.trash&&!g.calendarWrite?' · Reautorize para marcar compromissos':'')+(g.email?' · '+esc(g.email):''):g.state==='error'?'Erro: '+esc(g.message):(g.configured?'Resume e prioriza seus e-mails':esc(g.message)),extra:gOn?tgl('gmail_trash','Lixeira sob pedido'):'',btn:gOn?okb('gx','Desconectar'):plus('/auth/google',!g.configured)})+
-   card1({ic:'cal',nm:'Google Calendar',on:cOn,by:'Google',ds:cOn?'Lê sua agenda (somente leitura)':gOn?'Reautorize o Google para liberar a agenda':'Compromissos, próximo evento e horários livres',btn:cOn?okb('gx','Desconectar'):plus('/auth/google',!g.configured)})+
+   card1({ic:'mail',nm:'Gmail',on:gOn,by:'Google',ds:gOn?(g.trash?'Lê e move para a lixeira sob pedido':'Só leitura. Reautorize para liberar a lixeira')+(g.email?' · '+esc(g.email):''):g.state==='error'?'Erro: '+esc(g.message):(g.configured?'Resume e prioriza seus e-mails':esc(g.message)),extra:gOn?tgl('gmail_trash','Lixeira sob pedido'):'',btn:gOn?okb('gx','Desconectar'):plus('/auth/google',!g.configured)})+
+   card1({ic:'drive',nm:'Google Drive',on:!!I.gdrive?.on,by:'Google',ds:I.gdrive?.on?'Procura seus arquivos e salva no Drive o que eu crio':gOn?'Reconecte o Google marcando a caixa do Drive':'Procura arquivos e salva o que o Jarvis cria',btn:I.gdrive?.on?'<span class="go ok" aria-hidden="true">✓</span>':plus('/auth/google',!g.configured)})+
+   card1({ic:'tasks',nm:'Google Tasks',on:!!I.gtasks?.on,by:'Google',ds:I.gtasks?.on?'Tarefas e listas por voz: põe, risca e lista':gOn?'Reconecte o Google marcando a caixa do Tasks':'Tarefas e listas por voz',btn:I.gtasks?.on?'<span class="go ok" aria-hidden="true">✓</span>':plus('/auth/google',!g.configured)})+
    ghCard('github_read','GitHub (leitura)','PRs para revisar, CI e issues. Token de escopo fino, só leitura','git')+
    ghCard('github_write','GitHub (escrita)','Branch e pull request só sob pedido. Token separado','gitw',(I.keys.github_write||{}).state==='on'?tgl('github_write','Escrita sob pedido'):'')+
    card1({ic:'eye',nm:'Visão da tela',on:!!window.__screenOn,by:'seu navegador',ds:window.__screenOn?'Compartilhando. Só olho quando o senhor pedir; nada é gravado':'Compartilhe uma tela ou janela e peça: "olha minha tela"',btn:window.__screenOn?okb('sc','Parar de compartilhar'):'<button class="go" type="button" data-x="sc" aria-label="Compartilhar tela">+</button>'})+
+   (()=>{const s=I.spotify||{state:'off'};return card1({ic:'music',nm:'Spotify',on:s.state==='on',by:'Spotify',ds:s.state==='on'?esc(s.message||'Conectado')+' · toca, pula, pausa e diz o que está tocando':s.configured?'Toca, pula, pausa e diz o que está tocando (precisa do Premium para controlar)':esc(s.message||''),btn:s.state==='on'?okb('spx','Desconectar'):plus('/auth/spotify',!s.configured)})})()+
    card1({ic:'pen',nm:'Canva',on:c.state==='on',by:'Canva',ds:c.state==='soon'?'Em breve':esc(c.message||''),btn:c.state==='on'?'<span class="go ok" aria-hidden="true">✓</span>':plus('#',true)})};
 document.addEventListener('submit',async e=>{const f=e.target.closest&&e.target.closest('form.gk');if(!f)return;e.preventDefault();const p=f.dataset.p;
   try{S.integ.keys[p]=await api('/api/keys/'+p,{key:f.key.value});ghOpen=null;renderInteg()}catch(er){flash(er.message||'Não consegui salvar o token.')}});
 document.addEventListener('click',async e=>{const b=e.target.closest&&e.target.closest('[data-x]');if(!b)return;const x=b.dataset.x,p=b.dataset.p;
   try{
+   if(x==='spx'){if(confirm('Desconectar o Spotify?')){S.integ=await api('/auth/spotify/disconnect');renderInteg()}return}
    if(x==='go'){ghOpen=ghOpen===p?null:p;renderInteg();const i=document.querySelector('form.gk[data-p="'+p+'"] input');if(i)i.focus()}
    if(x==='gt'){S.integ.keys[p]=await req('POST','/api/keys/'+p+'/test',{});renderInteg()}
    if(x==='gd'){S.integ.keys[p]=await req('DELETE','/api/keys/'+p);ghOpen=null;renderInteg()}
@@ -1871,6 +1890,8 @@ document.addEventListener('click',async e=>{const b=e.target.closest&&e.target.c
 .cn:hover{border-color:var(--mute)}
 .cn .ic{width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--bg2);display:grid;place-items:center}
 .cn .ic svg{width:25px;height:25px;fill:none;stroke:var(--text);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.cn .ic svg.brand{width:28px;height:28px;stroke:none;stroke-width:0}
+.cn .ic.brand{background:var(--bg3)!important}
 .cn h4{margin:0;font:600 15px 'Montserrat',sans-serif;display:flex;gap:6px;align-items:center}
 .cn .vf{font-style:normal;font-size:10px;width:15px;height:15px;border-radius:50%;background:var(--acc);color:#16120a;display:grid;place-items:center}
 .cn p{margin:4px 0 0;color:var(--mute);font-size:13px;line-height:1.45;overflow-wrap:anywhere} .cn p.by{font-size:12px;opacity:.65} .cn p.tg{margin-top:10px}
@@ -2199,7 +2220,7 @@ body[data-m=listen] #orb::before,body[data-m=speak] #orb::before{opacity:1}
 .row,.cn{border-radius:18px;background:linear-gradient(180deg,#ffffff06,transparent),var(--bg2);border-color:var(--line)}
 .cn:hover{border-color:#3a3d44;box-shadow:0 18px 40px -28px #000}
 .cn .ic{border-radius:14px;background:linear-gradient(140deg,color-mix(in oklab,var(--acc) 14%,var(--bg3)),var(--bg3))}
-.cn .ic svg{stroke:var(--acc)}
+.cn .ic svg:not(.brand){stroke:var(--acc)}
 #onb{background:radial-gradient(60% 60% at 50% 30%,color-mix(in oklab,var(--acc) 7%,transparent),transparent 70%),color-mix(in oklab,var(--bg) 92%,transparent);backdrop-filter:blur(10px)}
 .card{border-radius:26px;background:linear-gradient(180deg,#ffffff08,transparent 40%),var(--bg2);box-shadow:0 50px 100px -40px #000,0 0 0 1px #ffffff08 inset}
 .card h2{letter-spacing:-.03em}
@@ -3620,14 +3641,14 @@ const TABS=[
   {k:'projetos',nm:'Projetos',ic:'<path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M8 13h8M8 16h5"/>',
     ds:'O que o Jarvis lembra de cada trabalho seu, entre uma conversa e outra: decisões, anotações e os arquivos que ele criou.'},
   {k:'perfil',nm:'Perfil',ic:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
-    ds:'Como o Jarvis trata o senhor, o que ele sabe sobre o seu trabalho e jeito, e os modelos de IA.'}];
+    ds:'Como o Jarvis trata o senhor, o que ele sabe sobre o seu trabalho e jeito, e o nível do Jarvis.'}];
 let cur='contas';
 const panel=document.getElementById('panel'),pin=panel.querySelector('.pin');
 panel.setAttribute('role','dialog');panel.setAttribute('aria-labelledby','pnhT');
 panel.insertAdjacentHTML('afterbegin',`<header class="pnh"><div class="t"><h2 id="pnhT">Ajustes</h2><p>Contas, agenda, rotinas e o seu jeito, num lugar só.</p></div>
   <button class="x" type="button" aria-label="Fechar ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
   <nav class="pnav" role="tablist" aria-label="Seções">${TABS.map(t=>`<button type="button" role="tab" data-tab="${t.k}"><svg viewBox="0 0 24 24" aria-hidden="true">${t.ic}</svg><span>${t.nm}</span>${t.k==='contas'?'<i class="n" id="pnN">0</i>':''}</button>`).join('')}
-  <p class="foot">A voz do Jarvis é a do Antonio (Microsoft). As chaves de IA ficam no arquivo .env deste computador, fora da página.</p></nav>`);
+</nav>`);
 pin.insertAdjacentHTML('afterbegin','<div class="ph" data-tab="*"><h3></h3><p></p></div>');
 const bk=document.createElement('div');bk.id='panelBk';bk.hidden=true;panel.before(bk);
 // Cada bloco do painel (criado pelos outros scripts) entra na sua aba.
@@ -3818,11 +3839,11 @@ ab.querySelector('#abSave').addEventListener('click',async()=>{
 /* ---------- Conta JARVIS (a mesma do site): o app responde pela chave do servidor ---------- */
 const ct=H('div','ctWrap','<div class="card2 ct" id="ctBox"></div>');
 {const ph=pin.querySelector('.ph');if(ph)ph.after(ct);else pin.prepend(ct)}   // logo abaixo do título da aba
-function ctDraw(){const c=S.integ?.conta||{on:false},box=ct.querySelector('#ctBox'),own=!!(S.integ?.keys?.gemini?.configured);
+function ctDraw(){const c=S.integ?.conta||{on:false},box=ct.querySelector('#ctBox');
   box.innerHTML=c.on?`<h4>Conta JARVIS</h4><div class="ctr"><span class="ava">${esc((c.name||c.email||'?').trim()[0]?.toUpperCase()||'?')}</span>
       <span><b>${esc(c.name||'Conectado')}</b><span class="s">${esc(c.email||'')}</span></span><button class="btn ghost" type="button" id="ctOut">Sair</button></div>
-    <p class="s">${own?'Você tem uma chave própria no .env: ela continua sendo usada primeiro. A conta entra quando ela falta.':'As respostas de IA vêm pela sua conta, com a chave do servidor. Nada de chave para configurar.'}</p>`
-    :`<h4>Conta JARVIS</h4><p class="s">Entre com a mesma conta do site (Google ou e-mail) e o Jarvis responde sem você precisar de uma chave de IA.${own?' Você já tem uma chave própria no .env, então isso é opcional.':''}</p>
+    <p class="s">O Jarvis está pronto para responder pela sua conta.</p>`
+    :`<h4>Conta JARVIS</h4><p class="s">Entre com a mesma conta do site (Google ou e-mail) para o Jarvis começar a responder.</p>
     <div class="bar"><a class="btn pri" href="/auth/conta">Entrar com a conta JARVIS</a><span class="ok" id="ctOk"></span></div>`;
   ct.querySelector('#ctOut')?.addEventListener('click',async()=>{try{S.integ=await api('/api/conta/sair',{});renderInteg();ctDraw()}catch(er){flash(er.message)}})}
 window.__ctDraw=ctDraw;
@@ -3919,6 +3940,833 @@ try{new ResizeObserver(set).observe(bar)}catch{addEventListener('resize',set)}se
 // Correio em pop-up: um clique fora dele fecha (como as outras janelas). O botão "Correio" do V continua alternando.
 document.addEventListener('click',e=>{const p=document.getElementById('vMail');if(!p||p.hidden||!e.isTrusted)return;
   if(p.contains(e.target)||e.target.closest?.('.vb-mail'))return;window.__mailToggle?.()});
+})();
+</script>
+
+<!-- ===== Rede neural (visual da tela principal) =====
+     Fundo: neurônios ligados por sinapses, com sinais correndo entre eles; o núcleo (#orb) é o centro da rede.
+     O círculo vira um núcleo de neurônios em 3D. Tudo reage ao estado: parado (calmo), ouvindo (ciano, os sinais vêm
+     para o núcleo), pensando (rede inteira disparando) e falando (pulsos saindo do núcleo no ritmo da voz).
+     Para voltar ao visual antigo, basta apagar este bloco. -->
+<style id="neural-css">
+#neural{position:fixed;inset:0;z-index:0;pointer-events:none;width:100%;height:100%}
+.app{z-index:1}
+/* o núcleo desenha todos os estados: os carregadores antigos de "pensando" e "falando" saem */
+#orb .l-think,#orb .l-speak{display:none}
+body[data-m=think] #orb .l-dial,body[data-m=speak] #orb .l-dial{opacity:1;transform:none}
+#orb{width:170px;height:170px}
+@media (max-width:600px){#orb{width:132px;height:132px}}
+@media (max-height:640px){#orb{width:108px;height:108px}}
+body.mini #orb{width:72px;height:72px}
+</style>
+<canvas id="neural" aria-hidden="true"></canvas>
+<script id="neural-js">
+(() => {
+  const RMq = matchMedia('(prefers-reduced-motion: reduce)');
+  const AMB = [242, 179, 61], CY = [95, 212, 255], WH = [241, 239, 233];
+  const st = () => document.body.dataset.m || 'idle';
+  const code = () => document.body.dataset.jm === 'code';
+  const hue = m => (m === 'listen' || code()) ? CY : AMB;
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const mix = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k].map(Math.round);
+  // nível de som (0 a 1), medido pelo núcleo no espectro da voz (falando) ou do microfone (ouvindo)
+  let myLv = 0; const level = () => myLv;
+  let col = AMB, energy = 0;   // cor e energia atuais (mudam suave entre os estados)
+  window.__neural = { col: () => col };   // a guia dos slides usa a mesma cor
+
+  /* ================= Fundo: a rede ================= */
+  const cv = document.getElementById('neural'), g = cv.getContext('2d');
+  let W = 0, H = 0, nodes = [], pulses = [], mx = -1e4, my = -1e4;
+  function size() {
+    const dpr = Math.min(1.5, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const n = Math.round(Math.min(130, Math.max(40, W * H / 14000)));
+    nodes = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * .12, vy: (Math.random() - .5) * .12, r: .8 + Math.random() * 1.6, f: 0 }));
+    pulses = [];
+  }
+  addEventListener('resize', size); size();
+  addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; }, { passive: true });
+  const LINK = () => Math.min(170, Math.max(110, Math.sqrt(W * H / nodes.length) * 1.25));
+  const orbXY = () => { const o = document.getElementById('orb'); if (!o) return [W / 2, H * .75]; const r = o.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2, r.width / 2]; };
+
+  function spawn(m, ox, oy, edges) {
+    if (!edges.length) return;
+    const rate = { idle: .6, listen: 5, think: 14, speak: 4 + level() * 18 }[m] || .6;
+    let k = rate / 60;
+    while (k > 0) {
+      if (Math.random() < k) {
+        let e = edges[Math.random() * edges.length | 0];
+        if (m === 'listen' || m === 'speak') {   // escolhe uma sinapse e orienta o sinal para o núcleo (ouvindo) ou para fora (falando)
+          const da = Math.hypot(e[0].x - ox, e[0].y - oy), db = Math.hypot(e[1].x - ox, e[1].y - oy);
+          const toward = m === 'listen' ? db < da : db > da;
+          e = toward ? e : [e[1], e[0]];
+        } else if (Math.random() < .5) e = [e[1], e[0]];
+        pulses.push({ a: e[0], b: e[1], t: 0, v: .012 + Math.random() * .02 + (m === 'think' ? .015 : 0) });
+      }
+      k -= 1;
+    }
+    if (pulses.length > 260) pulses.splice(0, pulses.length - 260);
+  }
+
+  function drawNet(now) {
+    const m = st(), [ox, oy, orr = 70] = orbXY(), L = LINK(), L2 = L * L;
+    const target = { idle: .35, listen: .7, think: 1, speak: .55 + level() * .45 }[m] ?? .25;
+    energy += (target - energy) * .05; col = mix(col, hue(m), .06);
+    g.clearRect(0, 0, W, H);
+    // move os neurônios (devagar) e puxa um pouco para o núcleo quando ouvindo
+    for (const p of nodes) {
+      if (!RMq.matches) {
+        p.x += p.vx * (1 + energy); p.y += p.vy * (1 + energy);
+        if (p.x < -20) p.x = W + 20; if (p.x > W + 20) p.x = -20; if (p.y < -20) p.y = H + 20; if (p.y > H + 20) p.y = -20;
+      }
+      p.f *= .94;
+    }
+    // sinapses
+    const edges = [];
+    g.lineWidth = 1;
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j], dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
+        if (d2 > L2) continue;
+        edges.push([a, b]);
+        const k = 1 - Math.sqrt(d2) / L, hot = Math.max(a.f, b.f);
+        g.strokeStyle = rgba(mix(WH, col, .55 + hot * .45), (.13 + energy * .14) * k + hot * .45 * k);
+        g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+      }
+    }
+    // o núcleo ligado aos neurônios mais próximos
+    const near = nodes.map(p => [p, Math.hypot(p.x - ox, p.y - oy)]).filter(x => x[1] < L * 2.2 && x[1] > orr).sort((a, b) => a[1] - b[1]).slice(0, 7);
+    for (const [p, d] of near) {
+      const k = 1 - d / (L * 2.2);
+      const grd = g.createLinearGradient(ox, oy, p.x, p.y); grd.addColorStop(0, rgba(col, .0)); grd.addColorStop(.35, rgba(col, (.12 + energy * .25) * k)); grd.addColorStop(1, rgba(col, .04));
+      g.strokeStyle = grd; g.beginPath(); g.moveTo(ox, oy); g.lineTo(p.x, p.y); g.stroke();
+      edges.push(m === 'listen' ? [p, { x: ox, y: oy, f: 0 }] : [{ x: ox, y: oy, f: 0 }, p]);
+    }
+    if (!RMq.matches) spawn(m, ox, oy, edges);
+    // sinais correndo
+    for (let i = pulses.length - 1; i >= 0; i--) {
+      const s = pulses[i]; s.t += RMq.matches ? 0 : s.v * (1 + energy);
+      if (s.t >= 1) { s.b.f = Math.min(1, (s.b.f || 0) + .8); pulses.splice(i, 1); continue; }
+      const x = s.a.x + (s.b.x - s.a.x) * s.t, y = s.a.y + (s.b.y - s.a.y) * s.t;
+      const tx = s.a.x + (s.b.x - s.a.x) * Math.max(0, s.t - .12), ty = s.a.y + (s.b.y - s.a.y) * Math.max(0, s.t - .12);
+      const grd = g.createLinearGradient(tx, ty, x, y); grd.addColorStop(0, rgba(col, 0)); grd.addColorStop(1, rgba(col, .85));
+      g.strokeStyle = grd; g.lineWidth = 1.6; g.beginPath(); g.moveTo(tx, ty); g.lineTo(x, y); g.stroke();
+      g.fillStyle = rgba(mix(col, WH, .5), .95); g.beginPath(); g.arc(x, y, 1.6, 0, 7); g.fill();
+    }
+    g.lineWidth = 1;
+    // neurônios (acendem quando um sinal chega ou perto do mouse)
+    for (const p of nodes) {
+      const md = Math.hypot(p.x - mx, p.y - my), hover = md < 140 ? (1 - md / 140) * .6 : 0;
+      const f = Math.min(1, p.f + hover);
+      if (f > .05) { g.fillStyle = rgba(col, f * .18); g.beginPath(); g.arc(p.x, p.y, p.r * 6, 0, 7); g.fill(); }
+      g.fillStyle = rgba(mix(WH, col, .4 + f * .6), .38 + energy * .25 + f * .6);
+      g.beginPath(); g.arc(p.x, p.y, p.r + f * 1.4, 0, 7); g.fill();
+    }
+    // feixe neural do núcleo até o slide, quando o núcleo está de lado ou em cima (palco)
+    const L0 = window.__palcoBeam?.();
+    if (L0) {
+      const grd = g.createLinearGradient(L0.x1, L0.y1, L0.x2, L0.y2); grd.addColorStop(0, rgba(col, .55)); grd.addColorStop(1, rgba(col, .05));
+      g.strokeStyle = grd; g.lineWidth = 1.4; g.setLineDash([3, 7]); g.lineDashOffset = -now / 35;
+      g.beginPath(); g.moveTo(L0.x1, L0.y1); g.lineTo(L0.x2, L0.y2); g.stroke(); g.setLineDash([]);
+      for (let q = 0; q < 3; q++) { const tt = ((now / 1100) + q / 3) % 1;
+        g.fillStyle = rgba(col, .9 * (1 - tt)); g.beginPath(); g.arc(L0.x1 + (L0.x2 - L0.x1) * tt, L0.y1 + (L0.y2 - L0.y1) * tt, 2, 0, 7); g.fill(); }
+      g.lineWidth = 1;
+    }
+    // vinheta: escurece as bordas e o meio da área de texto fica limpo
+    const vg = g.createRadialGradient(W / 2, H * .42, Math.min(W, H) * .15, W / 2, H * .5, Math.max(W, H) * .75);
+    vg.addColorStop(0, 'rgba(11,12,15,.3)'); vg.addColorStop(1, 'rgba(11,12,15,.7)');
+    g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  }
+
+  /* ================= Núcleo: neurônios numa esfera 3D ================= */
+  const oc = document.querySelector('#orb canvas'), og = oc?.getContext('2d');
+  const CN = 72, core = [], links = [];
+  for (let i = 0; i < CN; i++) {   // pontos espalhados por igual na esfera (espiral de Fibonacci)
+    const y = 1 - (i / (CN - 1)) * 2, r = Math.sqrt(1 - y * y), th = i * 2.399963;
+    core.push({ x: Math.cos(th) * r, y, z: Math.sin(th) * r, f: 0 });
+  }
+  for (let i = 0; i < CN; i++) {   // cada neurônio ligado aos 3 vizinhos mais próximos
+    core.map((q, j) => [j, (q.x - core[i].x) ** 2 + (q.y - core[i].y) ** 2 + (q.z - core[i].z) ** 2]).sort((a, b) => a[1] - b[1]).slice(1, 4)
+      .forEach(([j]) => { if (!links.some(l => (l[0] === i && l[1] === j) || (l[0] === j && l[1] === i))) links.push([i, j]); });
+  }
+  const bars = new Float32Array(64), fb = new Uint8Array(64);
+  let rot = 0, tilt = 0, cpulse = [];
+  function drawCore(now) {
+    if (!og) return;
+    const S0 = oc.clientWidth || 150, dpr = Math.min(2, devicePixelRatio || 1);
+    if (oc.width !== Math.round(S0 * dpr)) { oc.width = oc.height = Math.round(S0 * dpr); }
+    og.setTransform(dpr, 0, 0, dpr, 0, 0); og.clearRect(0, 0, S0, S0);
+    const m = st(), t = RMq.matches ? 0 : now / 1000, cx = S0 / 2;
+    let live = false;
+    const an = m === 'speak' ? (typeof outAn !== 'undefined' ? outAn : null) : m === 'listen' ? (typeof micAn !== 'undefined' ? micAn : null) : null;
+    if (an && !RMq.matches) { try { an.getByteFrequencyData(fb); live = fb.some(v => v > 0); } catch {} }
+    let sum = 0; if (live) for (let k = 0; k < 40; k++) sum += fb[k];
+    myLv += ((live ? Math.min(1, sum / 40 / 150) : m === 'speak' ? .35 : 0) - myLv) * .15;
+    if (m === 'speak') document.body.style.setProperty('--lv', myLv.toFixed(3));
+    const lv = myLv;
+    const c = col, R = S0 * .27 * (1 + (m === 'speak' ? lv * .12 : 0) + (m === 'listen' ? .03 * Math.sin(t * 3) : 0));
+    // halo
+    const gl = og.createRadialGradient(cx, cx, R * .1, cx, cx, R * 1.9);
+    gl.addColorStop(0, rgba(c, .1 + energy * .22 + lv * .2)); gl.addColorStop(1, rgba(c, 0));
+    og.fillStyle = gl; og.beginPath(); og.arc(cx, cx, R * 1.9, 0, 7); og.fill();
+    // anel de frequência por fora (o espectro da voz ou do microfone; parado, uma respiração leve)
+    const N = 64, r1 = S0 * .4;
+    for (let k = 0; k < N; k++) {
+      const a = k / N * Math.PI * 2 - Math.PI / 2, mm = Math.abs(k / N * 2 - 1);
+      const tgt = live ? .05 + fb[Math.min(40, Math.floor((1 - mm) * 30) + 2)] / 255 : m === 'think' ? .08 + .08 * Math.sin(t * 6 + k * .6) : m === 'listen' ? .08 + .06 * Math.sin(t * 2.4 + k * .4) : .04 + .02 * Math.sin(t * 1.2 + k * .3);
+      bars[k] += (tgt - bars[k]) * (RMq.matches ? 1 : .22);
+      const r2 = r1 + 2 + bars[k] * S0 * .12, cs = Math.cos(a), sn = Math.sin(a);
+      og.strokeStyle = rgba(c, .25 + Math.min(.7, bars[k] * 1.6)); og.lineWidth = 1.6; og.lineCap = 'round';
+      og.beginPath(); og.moveTo(cx + cs * r1, cx + sn * r1); og.lineTo(cx + cs * r2, cx + sn * r2); og.stroke();
+    }
+    // esfera girando: mais rápida pensando, inclina devagar
+    const spd = { idle: .25, listen: .5, think: 1.6, speak: .7 }[m] || .25;
+    if (!RMq.matches) { rot += .016 * spd; tilt = Math.sin(t * .3) * .35; }
+    const cr = Math.cos(rot), sr = Math.sin(rot), ct = Math.cos(tilt), stt = Math.sin(tilt);
+    const P = core.map(p => { const x = p.x * cr - p.z * sr, z0 = p.x * sr + p.z * cr, y = p.y * ct - z0 * stt, z = p.y * stt + z0 * ct; return { x: cx + x * R, y: cx + y * R, z, p }; });
+    // disparos: pensando, vários neurônios acendem; falando, no ritmo do som
+    if (!RMq.matches) {
+      const fire = { idle: .02, listen: .08, think: .5, speak: .12 + lv * .6 }[m] || .02;
+      if (Math.random() < fire) { const i = Math.random() * CN | 0; core[i].f = 1; const l = links.filter(l => l[0] === i || l[1] === i); l.forEach(([a, b]) => cpulse.push({ a: a === i ? a : b, b: a === i ? b : a, t: 0 })); }
+      core.forEach(p => p.f *= .93);
+    }
+    og.lineWidth = 1;
+    for (const [i, j] of links) {
+      const a = P[i], b = P[j], dz = (a.z + b.z) / 2, k = (dz + 1) / 2;
+      og.strokeStyle = rgba(mix(WH, c, .6), .05 + k * .22 + Math.max(core[i].f, core[j].f) * .4);
+      og.beginPath(); og.moveTo(a.x, a.y); og.lineTo(b.x, b.y); og.stroke();
+    }
+    for (let q = cpulse.length - 1; q >= 0; q--) {
+      const s = cpulse[q]; s.t += RMq.matches ? 1 : .06;
+      if (s.t >= 1) { core[s.b].f = Math.max(core[s.b].f, .7); cpulse.splice(q, 1); continue; }
+      const a = P[s.a], b = P[s.b];
+      og.fillStyle = rgba(mix(c, WH, .4), .95); og.beginPath(); og.arc(a.x + (b.x - a.x) * s.t, a.y + (b.y - a.y) * s.t, 1.4, 0, 7); og.fill();
+    }
+    if (cpulse.length > 120) cpulse.splice(0, cpulse.length - 120);
+    P.sort((a, b) => a.z - b.z).forEach(q => {
+      const k = (q.z + 1) / 2, f = q.p.f;
+      if (f > .1) { og.fillStyle = rgba(c, f * .35); og.beginPath(); og.arc(q.x, q.y, 5 + f * 4, 0, 7); og.fill(); }
+      og.fillStyle = rgba(mix(WH, c, .35 + f * .65), .25 + k * .65);
+      og.beginPath(); og.arc(q.x, q.y, .8 + k * 1.6 + f * 1.4, 0, 7); og.fill();
+    });
+    // centro
+    const cg = og.createRadialGradient(cx, cx, 0, cx, cx, R * .45);
+    cg.addColorStop(0, rgba(mix(c, WH, .5), .55 + lv * .4 + (m === 'think' ? .2 : 0))); cg.addColorStop(1, rgba(c, 0));
+    og.fillStyle = cg; og.beginPath(); og.arc(cx, cx, R * .45, 0, 7); og.fill();
+    // anel guia por dentro do espectro
+    og.strokeStyle = rgba(c, m === 'idle' ? .18 : .45); og.lineWidth = 1; og.beginPath(); og.arc(cx, cx, S0 * .37, 0, 7); og.stroke();
+  }
+
+  // O núcleo novo substitui o desenho do círculo antigo (o laço e o setMode do app chamam drawOrb).
+  window.drawOrb = function (now) { drawCore(now ?? performance.now()); };
+  try { drawOrb = window.drawOrb; } catch {}
+  (function loop(now) {
+    if (!document.hidden) drawNet(now);
+    if (!RMq.matches) requestAnimationFrame(loop);
+  })(performance.now());
+})();
+</script>
+
+
+<!-- ===== Palco: o núcleo muda de lugar a cada slide =====
+     Durante uma apresentação, o núcleo neural (com a legenda junto) vai para baixo, para cima ou para um dos lados do
+     slide, conforme o que o slide mostra (gráfico de um lado, núcleo do outro; cartões largos, núcleo em cima ou embaixo).
+     A troca é animada e um feixe neural liga o núcleo ao slide. Na legenda, palavras de destaque mudam de fonte:
+     termos do slide em serifada itálica, números em mono e nomes próprios em negrito. Para tirar, apague este bloco. -->
+<style id="palco-css">
+@media (min-width:980px){
+  body.palco:not(.mini) .app{column-gap:clamp(24px,3vw,48px)}
+  body.palco.pos-left:not(.mini) .app,body.palco.pos-right:not(.mini) .app{max-width:1360px;grid-template-rows:minmax(0,1fr) auto auto minmax(0,1fr)}
+  body.palco.pos-left:not(.mini) .app{grid-template-columns:minmax(230px,300px) minmax(0,1fr)}
+  body.palco.pos-right:not(.mini) .app{grid-template-columns:minmax(0,1fr) minmax(230px,300px)}
+  body.palco.pos-left:not(.mini) #stage{grid-column:2;grid-row:1/5}
+  body.palco.pos-right:not(.mini) #stage{grid-column:1;grid-row:1/5}
+  body.palco.pos-left:not(.mini) #dock,body.palco.pos-left:not(.mini) #cap{grid-column:1}
+  body.palco.pos-right:not(.mini) #dock,body.palco.pos-right:not(.mini) #cap{grid-column:2}
+  body.palco.pos-left:not(.mini) #dock,body.palco.pos-right:not(.mini) #dock{grid-row:2;align-self:end}
+  body.palco.pos-left:not(.mini) #cap,body.palco.pos-right:not(.mini) #cap{grid-row:3;align-self:start;height:auto;min-height:4.4em;margin-top:10px;font-size:clamp(20px,1.8vw,27px);line-height:1.28}
+  body.palco.pos-top:not(.mini) .app{grid-template-rows:auto auto minmax(0,1fr)}
+  body.palco.pos-top:not(.mini) #dock{grid-row:1}
+  body.palco.pos-top:not(.mini) #cap{grid-row:2}
+  body.palco.pos-top:not(.mini) #stage{grid-row:3}
+  /* com o núcleo de lado ou em cima, a caixa de texto fica fixa embaixo, no centro */
+  body.palco.pos-left:not(.mini) #tx,body.palco.pos-right:not(.mini) #tx,body.palco.pos-top:not(.mini) #tx{position:fixed;left:50%;bottom:max(12px,env(safe-area-inset-bottom));translate:-50% 0;z-index:5}
+  body.palco.pos-left:not(.mini) #state,body.palco.pos-right:not(.mini) #state,body.palco.pos-top:not(.mini) #state{display:none}
+}
+/* legenda: variação de fonte nas palavras de destaque */
+#cap .w.kw{font-family:var(--serif);font-style:italic;font-weight:400;font-size:1.12em;letter-spacing:0}
+#cap .w.kw.p,#cap .w.kw.on{color:var(--acc2,#ffc960)}
+#cap .w.num{font-family:var(--mono);font-weight:400;font-size:.92em;letter-spacing:-.02em}
+#cap .w.num.p,#cap .w.num.on{color:var(--code,#5fd4ff)}
+#cap .w.nome{font-weight:800;letter-spacing:.01em}
+#cap .w.nome.p{text-shadow:0 0 18px color-mix(in oklab,var(--acc) 35%,transparent)}
+</style>
+<script id="palco-js">
+(() => {
+  const RMq = matchMedia('(prefers-reduced-motion: reduce)');
+  const wide = () => innerWidth >= 980 && !document.body.classList.contains('mini');
+  const POS = ['pos-left', 'pos-right', 'pos-top', 'pos-bottom'];
+  const FROM_AI = { esquerda: 'pos-left', direita: 'pos-right', cima: 'pos-top', baixo: 'pos-bottom' };
+  let last = 'pos-bottom', count = 0;
+
+  // Onde o núcleo fica neste slide: o que a IA pediu ("orbe") ou pelo conteúdo, variando para não repetir.
+  function choose(s, i, n) {
+    if (FROM_AI[s?.orbe]) return FROM_AI[s.orbe];
+    if (i === 0 || i === n - 1) return 'pos-bottom';            // abertura e encerramento: o núcleo embaixo, como sempre
+    if (/^(jornal|placar|tabela|lembrete)/.test(String(s.layout || ''))) return 'pos-bottom';   // jornal, placar, tabela e lembrete ocupam a largura toda
+    const fig = s.chart || s.img?.items?.length || s.board;
+    if (s.layout === 'cartoes' || s.layout === 'passos' || s.layout === 'galeria' || s.board) return last === 'pos-top' ? 'pos-bottom' : 'pos-top';
+    if (fig) return last === 'pos-left' ? 'pos-right' : 'pos-left';   // gráfico ou foto de um lado, núcleo do outro
+    const opts = ['pos-left', 'pos-right', 'pos-top'].filter(p => p !== last);
+    return opts[count++ % opts.length];
+  }
+  // Troca de lugar animada: mede antes e depois e desliza o núcleo e a legenda (FLIP).
+  function setPos(pos) {
+    const b = document.body, els = ['orb', 'cap'].map(id => document.getElementById(id)).filter(Boolean);
+    const before = els.map(e => e.getBoundingClientRect());
+    POS.forEach(p => b.classList.toggle(p, p === pos));
+    b.classList.toggle('palco', pos !== 'pos-bottom');
+    last = pos;
+    if (RMq.matches) return;
+    els.forEach((e, k) => {
+      const a = before[k], z = e.getBoundingClientRect();
+      if (!a.width || !z.width) return;
+      const dx = a.left + a.width / 2 - (z.left + z.width / 2), dy = a.top + a.height / 2 - (z.top + z.height / 2);
+      if (Math.abs(dx) + Math.abs(dy) < 4) return;
+      e.animate([{ transform: `translate(${dx}px,${dy}px)` }, { transform: 'none' }], { duration: 750, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    });
+  }
+  function leave() { if (document.body.classList.contains('palco') || last !== 'pos-bottom') setPos('pos-bottom'); }
+
+  // Palavras de destaque do slide atual (título, tópicos, itens, rótulos do gráfico).
+  const fold = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const STOP = new Set('sobre entre quando porque ainda tambem depois antes muito mesmo outro outra outros todas todos senhor isso essa esse aquele'.split(' '));
+  let KEYS = new Set();
+  function keysOf(s) {
+    const txt = [s.title, s.fact, ...(s.points || []), ...(s.items || []).map(x => `${x.title} ${x.value || ''}`), ...(s.ficha || []).map(x => x.k),
+      ...(s.chart?.data || []).map(d => d.label), ...(s.pros || []), ...(s.cons || [])].join(' ');
+    return new Set(txt.split(/\s+/).map(fold).filter(w => w.length >= 5 && !STOP.has(w)));
+  }
+
+  // Liga no app: cada slide novo escolhe o lugar do núcleo ANTES de desenhar (o gráfico já nasce no tamanho certo).
+  const _show = window.show;
+  window.show = function (s, i, n, topic) {
+    KEYS = keysOf(s || {});
+    const speaking = document.body.dataset.m === 'speak' || document.body.dataset.m === 'think';
+    if (wide() && n > 1 && speaking) setPos(choose(s || {}, i, n)); else leave();
+    return _show.apply(this, arguments);
+  };
+  try { show = window.show; } catch {}
+  // fim da apresentação (parou de falar e não está pensando no próximo): volta para baixo
+  let t0;
+  new MutationObserver(() => { const m = document.body.dataset.m; clearTimeout(t0); if (m !== 'speak' && m !== 'think') t0 = setTimeout(leave, 900); })
+    .observe(document.body, { attributes: true, attributeFilter: ['data-m'] });
+  addEventListener('resize', () => { if (!wide()) leave(); });
+
+  // Legenda: classifica as palavras do grupo atual a cada palavra falada.
+  const _at = Cap.at;
+  Cap.at = function (i) {
+    _at.call(this, i);
+    const spans = document.querySelectorAll('#cap .w');
+    spans.forEach((sp, j) => {
+      const raw = sp.textContent, w = fold(raw), prev = j ? spans[j - 1].textContent : '';
+      const k = +sp.dataset.k, sentenceStart = k === 0 || /[.!?…:]$/.test(this.words[k - 1] || '');
+      if (/\d/.test(raw)) sp.classList.add('num');
+      else if (KEYS.has(w)) sp.classList.add('kw');
+      else if (/^[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]{2,}/.test(raw) && !sentenceStart && !/^(Senhor|Senhora|Eu|Você)$/.test(raw.replace(/[^\wÀ-ú]/g, ''))) sp.classList.add('nome');
+    });
+  };
+
+  // Feixe neural do núcleo até o slide (desenhado pela rede do fundo).
+  window.__palcoBeam = () => {
+    const b = document.body; if (!b.classList.contains('palco') || !wide()) return null;
+    const o = document.getElementById('orb')?.getBoundingClientRect(), st = document.getElementById('stage')?.getBoundingClientRect();
+    if (!o || !st) return null;
+    const ox = o.left + o.width / 2, oy = o.top + o.height / 2;
+    if (b.classList.contains('pos-left')) return { x1: o.right - 6, y1: oy, x2: st.left - 4, y2: oy };
+    if (b.classList.contains('pos-right')) return { x1: o.left + 6, y1: oy, x2: st.right + 4, y2: oy };
+    return { x1: ox, y1: o.bottom - 6, x2: ox, y2: st.top + 4 };
+  };
+})();
+</script>
+
+<!-- ===== Jornal: notícias em formato de jornal impresso =====
+     Modelo pronto (o servidor só troca a palavra e as manchetes, sem IA):
+     - "jornal-intro": montagem rápida de páginas de jornal, com a palavra do dia em destaque amarelo no centro
+       (cortes a cada ~0,3 s, profundidade de campo, franja de cor e grão de papel);
+     - "jornal-capa": capa com cabeçalho, a manchete principal com foto e as outras em coluna;
+     - "jornal": uma página por notícia, com foto da matéria, fonte, horário e link (alterna a diagramação).
+     Para tirar, apague este bloco. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&display=swap">
+<style id="jornal-css">
+.slide.g-jornal-intro,.slide.g-jornal-capa,.slide.g-jornal{padding:clamp(6px,2vh,18px) 0 4px}
+.slide.g-jornal-intro .g-bg,.slide.g-jornal-capa .g-bg,.slide.g-jornal .g-bg{display:none}
+.slide.g-jornal-intro>*,.slide.g-jornal-capa>*,.slide.g-jornal>*{flex:1 1 auto;min-height:0;height:100%}
+.jn-paper{position:relative;height:100%;border-radius:14px;overflow:hidden;color:#1b1813;background:#efe8d8;
+  box-shadow:0 30px 80px -30px #000,inset 0 0 120px rgba(120,90,40,.22);font-family:'Libre Caslon Text',Georgia,serif}
+.jn-paper::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:.35;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .38 0 0 0 0 .28 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.jn-kw{background:linear-gradient(transparent 8%,#ffd400 8%,#ffd400 92%,transparent 92%);color:#141108;padding:0 .14em;border-radius:2px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+/* ---------- montagem de abertura ---------- */
+.jn-mont{position:relative;height:100%;border-radius:14px;overflow:hidden;background:#efe8d8}
+.jn-page{position:absolute;left:-12%;right:-12%;top:-8%;bottom:-8%;display:flex;flex-direction:column;justify-content:center;gap:.18em;
+  font:700 clamp(19px,2.5vw,34px)/1.18 'Libre Caslon Text',Georgia,serif;color:#1b1813;text-align:justify;text-align-last:justify;
+  text-shadow:-1.6px 0 rgba(230,30,60,.55),1.6px 0 rgba(20,140,255,.55);will-change:transform}
+.jn-page .hd{font:900 clamp(40px,6vw,86px)/1 'Playfair Display',Georgia,serif;text-transform:uppercase;letter-spacing:.02em;text-align:left;text-align-last:left;margin:0 14% .25em}
+.jn-page .ln{white-space:nowrap;overflow:hidden}
+.jn-page .mid{display:flex;align-items:baseline;justify-content:center;gap:.4em;white-space:nowrap;text-align-last:auto}
+.jn-page .mid .kw{font:900 1.7em/1 'Playfair Display',Georgia,serif;color:#141108;background:#ffd400;padding:.04em .2em;text-shadow:-1.6px 0 rgba(230,30,60,.45),1.6px 0 rgba(20,140,255,.45);box-shadow:0 0 0 3px #ffd400}
+.jn-page .mid .l{flex:1;text-align:right;overflow:hidden}.jn-page .mid .r{flex:1;overflow:hidden}
+.jn-dof{position:absolute;inset:0;pointer-events:none;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+  mask-image:radial-gradient(ellipse 34% 20% at 50% 52%,transparent 35%,#000 100%);-webkit-mask-image:radial-gradient(ellipse 34% 20% at 50% 52%,transparent 35%,#000 100%)}
+.jn-vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 50%,transparent 45%,rgba(40,28,10,.45))}
+.jn-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+.jn-flash.on{animation:jnfl .22s ease-out}
+@keyframes jnfl{0%{opacity:.55}100%{opacity:0}}
+/* ---------- capa ---------- */
+.jn-capa{display:grid;grid-template-rows:auto auto minmax(0,1fr);padding:clamp(10px,1.6vw,20px) clamp(14px,2.2vw,28px)}
+.jn-mast{text-align:center;border-bottom:3px double #1b1813;padding-bottom:8px}
+.jn-mast h1{margin:0 0 4px;font:900 clamp(30px,4vw,58px)/.95 'Playfair Display',Georgia,serif;letter-spacing:.01em}
+.jn-mast .jn-row{display:flex;justify-content:space-between;gap:12px;font:400 12px/1.3 'Libre Caslon Text',Georgia,serif;text-transform:uppercase;letter-spacing:.12em;opacity:.75;border-top:1px solid #1b1813;padding-top:6px}
+.jn-capa .jn-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:clamp(12px,1.8vw,24px);min-height:0;margin-top:10px}
+.jn-lead{display:grid;grid-template-columns:1.15fr 1fr;grid-template-rows:auto auto 1fr;column-gap:16px;row-gap:6px;min-height:0}
+.jn-lead .jn-ph{grid-row:1/4;height:100%}
+.jn-ph{margin:0;position:relative;overflow:hidden;border-radius:4px;background:#d9d0bd;min-height:120px}
+.jn-ph img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .5s;filter:grayscale(.15) sepia(.18) contrast(1.06)}
+.jn-ph img.ok{opacity:1}
+.jn-ph::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:.22;mix-blend-mode:multiply;background:radial-gradient(circle,#000 .7px,transparent 1.1px) 0 0/4px 4px}
+.jn-ph figcaption{position:absolute;left:0;bottom:0;padding:4px 8px;font:italic 400 11.5px 'Libre Caslon Text',Georgia,serif;background:#efe8d8cc}
+.jn-lead h2{margin:0;font:900 clamp(20px,2.2vw,34px)/1.06 'Playfair Display',Georgia,serif}
+.jn-by{font:italic 400 13px 'Libre Caslon Text',Georgia,serif;opacity:.7}
+.jn-sec{list-style:none;margin:0;padding:0 0 0 clamp(12px,1.6vw,22px);border-left:1px solid #1b181355;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.jn-sec li{padding-bottom:8px;border-bottom:1px solid #1b181333}
+.jn-sec li:last-child{border:0}
+.jn-sec b{display:block;font:700 clamp(14px,1.2vw,17px)/1.2 'Playfair Display',Georgia,serif}
+.jn-sec span{font:italic 400 12px 'Libre Caslon Text',Georgia,serif;opacity:.7}
+.jn-sec em{font:900 13px 'Playfair Display',serif;font-style:normal;margin-right:6px;color:#8a6d1e}
+/* ---------- página da notícia ---------- */
+.jn-art{display:grid;grid-template-rows:auto minmax(0,1fr);padding:clamp(10px,1.6vw,20px) clamp(14px,2.2vw,28px)}
+.jn-top{display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:2px solid #1b1813;padding-bottom:6px;font:400 12px 'Libre Caslon Text',Georgia,serif;text-transform:uppercase;letter-spacing:.12em}
+.jn-top b{font:900 18px 'Playfair Display',Georgia,serif;letter-spacing:.02em;text-transform:none}
+.jn-body{display:grid;gap:clamp(14px,2vw,26px);min-height:0;margin-top:10px}
+.jn-art .jn-body{grid-template-columns:1.1fr 1fr;align-items:stretch}
+.jn-art .jn-body>div:first-child{display:flex;flex-direction:column;justify-content:center;min-height:0}
+.jn-art.b .jn-body{grid-template-columns:1fr 1.1fr}.jn-art.b .jn-body>div:first-child{order:2}
+.jn-art h2{margin:0 0 8px;font:900 clamp(22px,2.7vw,42px)/1.04 'Playfair Display',Georgia,serif}
+.jn-art .jn-deck{font:italic 400 clamp(14px,1.2vw,17px)/1.4 'Libre Caslon Text',Georgia,serif;opacity:.78;margin:0 0 12px}
+.jn-fill{columns:2;column-gap:16px;font:400 12.5px/1.45 'Libre Caslon Text',Georgia,serif;text-align:justify;filter:blur(1.4px);opacity:.42;overflow:hidden;user-select:none}
+.jn-link{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font:700 12px 'Libre Caslon Text',Georgia,serif;text-transform:uppercase;letter-spacing:.1em;color:#1b1813;text-decoration:none;border:1px solid #1b1813;border-radius:99px;padding:6px 12px}
+.jn-link:hover{background:#1b1813;color:#efe8d8}
+@media (max-width:760px){.jn-capa .jn-grid,.jn-art .jn-body,.jn-lead{grid-template-columns:1fr}.jn-art.b .jn-body>div:first-child{order:0}.jn-lead .jn-ph{grid-row:auto;height:160px}.jn-sec{border:0;padding:0}.jn-fill{display:none}.jn-mast .jn-row span:last-child{display:none}}
+body.jornal-on #orb{width:104px;height:104px}
+body.jornal-on #cap{font-size:clamp(19px,2vw,26px)}
+@media (prefers-reduced-motion:reduce){.jn-page{transition:none}}
+</style>
+<script id="jornal-js">
+(() => {
+  const E = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fold = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  // marca a palavra do dia (amarelo) dentro de um texto, sem ligar para acento ou maiúscula
+  function mark(text, word) {
+    const t = String(text || ''); if (!word) return E(t);
+    const f = fold(t), w = fold(word), i = f.indexOf(w);
+    if (i < 0) return E(t);
+    return E(t.slice(0, i)) + `<mark class="jn-kw">${E(t.slice(i, i + w.length))}</mark>` + E(t.slice(i + w.length));
+  }
+  const FILL = ['A edição da manhã chegou mais cedo que o normal', 'e as bancas esvaziaram antes do meio-dia', 'leitores antigos dizem não lembrar de algo assim',
+    'a redação confirmou os detalhes pouco antes de a impressora rodar', 'repórteres foram enviados a todos os cantos da cidade',
+    'a tiragem dobrou e ainda assim faltou jornal', 'do outro lado da linha os telefones não paravam', 'os editores viraram a noite para fechar a página',
+    'a carta dos leitores transbordou pelo terceiro dia seguido', 'nas agências as mesmas palavras se repetiam a noite inteira', 'um porta-voz prometeu novidades ao longo do dia'];
+  const HEADS = ['Edição extra', 'Urgente', 'Última hora', 'Manchete', 'Plantão', 'Em pauta', 'Exclusivo'];
+  const rnd = a => a[Math.random() * a.length | 0];
+  const line = () => Array.from({ length: 4 }, () => rnd(FILL)).join('. ') + '.';
+  const tidy = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+  const fmtDate = iso => { try { return new Date(iso || Date.now()).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); } catch { return ''; } };
+  const LAY = {
+    'jornal-intro': s => `<div class="jn-mont"><div class="jn-page"></div><div class="jn-dof"></div><div class="jn-vig"></div><div class="jn-flash"></div></div>`,
+    'jornal-capa': s => {
+      const j = s.jornal || {}, it = j.items || [], w = j.palavra, lead = it[0] || { title: s.title };
+      const hour = new Date(j.at || Date.now()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      return `<div class="jn-paper jn-capa"><header class="jn-mast"><div class="jn-row"><span>${E(fmtDate(j.at))}</span><span>Edição das ${E(hour)}</span><span>Google Notícias</span></div><h1>O JARVIS</h1></header><div></div>
+        <div class="jn-grid"><article class="jn-lead"><figure class="jn-ph g-ph"><img alt="" data-i="0">${lead.source ? `<figcaption>${E(lead.source)}</figcaption>` : ''}</figure>
+        <h2>${mark(lead.title, w)}</h2><span class="jn-by">${E([lead.source, lead.ago].filter(Boolean).join(' · '))}</span></article>
+        <ol class="jn-sec">${it.slice(1, 5).map((x, i) => `<li><b><em>${i + 2}</em>${mark(x.title, w)}</b><span>${E([x.local ? 'Local' : '', x.source, x.ago].filter(Boolean).join(' · '))}</span></li>`).join('')}</ol></div></div>`;
+    },
+    jornal: s => {
+      const j = s.jornal || {}, w = j.palavra, v = (j.n || 1) % 2 ? 'a' : 'b';
+      const top = `<div class="jn-top"><b>O JARVIS</b><span>${E([j.local ? 'Local' : '', j.source, j.ago].filter(Boolean).join(' · '))}</span><span>${j.n ? `Notícia ${j.n} de ${j.total}` : ''}</span></div>`;
+      const ph = `<figure class="jn-ph g-ph"><img alt="" data-i="0">${j.source ? `<figcaption>Foto: reprodução · ${E(j.source)}</figcaption>` : ''}</figure>`;
+      const fill = `<div class="jn-fill" aria-hidden="true">${Array.from({ length: 6 }, () => `<p>${E(tidy(line()))}</p>`).join('')}</div>`;
+      const link = j.link ? `<a class="jn-link" href="${E(j.link)}" target="_blank" rel="noopener noreferrer">Ler a matéria ↗</a>` : '';
+      const head = `<div><h2>${mark(s.title, w)}</h2><p class="jn-deck">${E(j.source ? `Segundo ${j.source}${j.ago ? `, ${j.ago}` : ''}.` : '')}</p>${link}</div>`;
+      return `<div class="jn-paper jn-art ${v}">${top}<div class="jn-body">${head}${s.img?.items?.length ? ph : fill}</div></div>`;
+    }
+  };
+  const _gs = window.glassSlide;
+  window.glassSlide = (s, k) => LAY[s.layout] ? LAY[s.layout](s) : (_gs ? _gs(s, k) : null);
+
+  // Montagem: troca a página a cada ~0,3 s (a palavra do dia fica no centro), com um leve salto de câmera.
+  let timer = 0;
+  function montage(root, word) {
+    clearInterval(timer);
+    const page = root.querySelector('.jn-page'), flash = root.querySelector('.jn-flash');
+    const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const cut = () => {
+      if (!page.isConnected) return clearInterval(timer);
+      const before = Array.from({ length: 5 }, () => `<div class="ln">${E(line())}</div>`).join('');
+      const after = Array.from({ length: 6 }, () => `<div class="ln">${E(line())}</div>`).join('');
+      const l = rnd(FILL).split(' ').slice(-4).join(' '), r = rnd(FILL).split(' ').slice(0, 5).join(' ');
+      page.innerHTML = `<div class="hd">${E(rnd(HEADS))}</div>${before}<div class="mid"><span class="l">${E(l)}</span><span class="kw">${E(word)}</span><span class="r">${E(r)}</span></div>${after}`;
+      if (!RM) {
+        page.style.transform = `translate(${(Math.random() - .5) * 6}%,${(Math.random() - .5) * 5}%) scale(${(1.02 + Math.random() * .22).toFixed(3)}) rotate(${((Math.random() - .5) * 2.2).toFixed(2)}deg)`;
+        flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on');
+      }
+    };
+    cut(); if (!RM) timer = setInterval(cut, 300);
+  }
+  const _show = window.show;
+  window.show = function (s) {
+    const r = _show.apply(this, arguments);
+    const el = [...document.querySelectorAll('#stage .slide:not(.out)')].pop();
+    const m = el?.querySelector('.jn-mont');
+    document.body.classList.toggle('jornal-on', String(s?.layout || '').startsWith('jornal'));
+    if (m) montage(m, (s?.jornal?.palavra || s?.title || 'NOTÍCIAS').toUpperCase()); else clearInterval(timer);
+    return r;
+  };
+  try { show = window.show; } catch {}
+})();
+</script>
+
+<!-- ===== Slides no celular =====
+     Em tela estreita o espaço do slide é pequeno: o slide fica dentro do palco (sem vazar por cima do núcleo e da
+     legenda) e rola com o dedo quando não cabe, com um esmaecido no fim avisando que tem mais. Textos, gráficos,
+     cartões e o núcleo ficam mais compactos. -->
+<style id="mobile-css">
+@media (max-width:760px){
+  #stage{overflow:hidden}
+  .slide{overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+    padding:6px 2px 34px;mask-image:linear-gradient(#000 calc(100% - 30px),transparent);-webkit-mask-image:linear-gradient(#000 calc(100% - 30px),transparent)}
+  .slide::-webkit-scrollbar{display:none}
+  .slide.solo{justify-content:safe center}
+  .slide.split{display:flex}
+  .slide>*{flex-shrink:0}
+  .ttl,.slide.split .ttl,.slide.has-board .ttl{font-size:clamp(23px,6.6vw,30px);max-width:none}
+  .solo .ttl{font-size:clamp(28px,8.4vw,40px)}
+  .fact,.slide.solo .fact{font-size:15.5px;line-height:1.4}
+  .pts{margin-top:.8em;gap:.45em}
+  .pts li{font-size:15px;padding-left:22px}
+  .fig{flex:0 0 auto;margin-top:14px}
+  .chart{flex:0 0 auto;height:190px;min-height:0}
+  .board{flex-shrink:0}
+  /* slides em vidro */
+  .g-in{height:auto;gap:12px}
+  .g-t{font-size:clamp(22px,6.4vw,30px)}
+  .g-f{font-size:15px}
+  .g-cards,.g-steps{grid-template-columns:1fr 1fr;gap:10px}
+  .g-card,.g-step{padding:12px 13px}
+  .g-card h3,.g-step h3{font-size:15px}
+  .g-card p,.g-step p{font-size:13px;line-height:1.4}
+  .g-card b{font-size:22px}
+  .g-q blockquote{font-size:clamp(19px,5.4vw,24px)}
+  /* jornal */
+  .slide.g-jornal-intro>*,.slide.g-jornal-capa>*,.slide.g-jornal>*{height:auto;min-height:100%}
+  .slide.g-jornal-intro>.jn-mont{height:100%;min-height:300px}
+  .jn-lead .jn-ph,.jn-art .jn-ph{height:170px;min-height:170px}
+  .jn-art h2{font-size:clamp(21px,6vw,28px)}
+  .jn-lead h2{font-size:clamp(19px,5.4vw,24px)}
+  .jn-mast h1{font-size:clamp(28px,9vw,40px)}
+  /* núcleo e legenda menores para sobrar espaço ao slide */
+  #orb,body.jornal-on #orb{width:88px;height:88px}
+  #cap{font-size:clamp(18px,5.2vw,23px);height:calc(2.5em + 4px)}
+  #state{font-size:12px}
+}
+@media (max-width:380px){.g-cards,.g-steps{grid-template-columns:1fr}}
+</style>
+<script id="mobile-js">
+// Celular: o slide rola sozinho acompanhando a fala (o que está sendo dito aparece na tela).
+// Se a pessoa mexer com o dedo, a rolagem automática espera alguns segundos.
+(() => {
+  const narrow = () => innerWidth <= 760 && !document.body.classList.contains('mini');
+  let touched = 0;
+  addEventListener('touchstart', e => { if (e.target.closest?.('#stage')) touched = Date.now(); }, { passive: true });
+  addEventListener('wheel', e => { if (e.target.closest?.('#stage')) touched = Date.now(); }, { passive: true });
+  const _at = Cap.at;
+  Cap.at = function (i) {
+    _at.call(this, i);
+    if (!narrow() || Date.now() - touched < 4000 || !this.words.length) return;
+    const sl = [...document.querySelectorAll('#stage .slide:not(.out)')].pop(); if (!sl) return;
+    const room = sl.scrollHeight - sl.clientHeight; if (room < 8) return;
+    const p = Math.min(1, Math.max(0, (i / this.words.length - .12) / .7));
+    const y = Math.round(room * p); if (Math.abs(y - sl.scrollTop) > 24) sl.scrollTo({ top: y, behavior: 'smooth' });
+  };
+})();
+</script>
+
+<!-- ===== Integrações na rede neural =====
+     Quando o Jarvis usa uma integração (Gmail, Agenda, Spotify, YouTube, GitHub, Steam, notícias, imagens, arquivos,
+     Correio, tela...), o ícone dela surge como um neurônio ligado ao núcleo: um sinal sai do núcleo até o ícone
+     (o pedido) e volta (a resposta), e o ícone fica aceso enquanto ele fala. Para tirar, apague este bloco. -->
+<script id="integ-js">
+(() => {
+  const RMq = matchMedia('(prefers-reduced-motion: reduce)');
+  // Ícones em 24×24 (desenhados no canvas). cor = fundo do neurônio; "p" = traços/preenchimentos.
+  const P = s => new Path2D(s);
+  const ICON = {
+    gmail: { bg: '#ffffff', label: 'Gmail', draw: g => { [['#4285F4', 'M2 6.5V18a1.5 1.5 0 0 0 1.5 1.5H6V10z'], ['#34A853', 'M18 19.5h2.5A1.5 1.5 0 0 0 22 18V6.5L18 10z'], ['#EA4335', 'M6 10V5.2l6 4.5 6-4.5V10l-6 4.5z'], ['#FBBC04', 'M18 5.2V10l4-3.5v-.8c0-1.4-1.6-2.2-2.7-1.4z'], ['#C5221F', 'M2 5.7v.8L6 10V5.2l-1.3-.9C3.6 3.5 2 4.3 2 5.7z']].forEach(([c, d]) => { g.fillStyle = c; g.fill(P(d)); }); } },
+    agenda: { bg: '#ffffff', label: 'Agenda', draw: g => { g.fillStyle = '#4285F4'; g.fill(P('M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v2H3z')); g.strokeStyle = '#4285F4'; g.lineWidth = 1.6; g.stroke(P('M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z')); g.fillStyle = '#1a73e8'; g.font = '700 9px Montserrat,sans-serif'; g.textAlign = 'center'; g.fillText('31', 12, 18); } },
+    spotify: { bg: '#1DB954', label: 'Spotify', draw: g => { g.strokeStyle = '#0b0c0f'; g.lineWidth = 2; g.lineCap = 'round'; g.stroke(P('M6.5 9.2c3.6-1 7.8-.7 11 1M7.2 12.4c3-.8 6.4-.5 9 .9M8 15.4c2.4-.6 4.8-.4 6.8.7')); } },
+    youtube: { bg: '#FF0000', label: 'YouTube', draw: g => { g.fillStyle = '#fff'; g.fill(P('M9.5 8v8l7-4z')); } },
+    github: { bg: '#f1efe9', label: 'GitHub', draw: g => { g.fillStyle = '#111'; g.fill(P('M12 2.5a9.5 9.5 0 0 0-3 18.5c.5.1.7-.2.7-.5v-1.7c-2.7.6-3.3-1.2-3.3-1.2-.4-1.1-1.1-1.4-1.1-1.4-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.3-1.1.6-1.3-2.1-.2-4.4-1.1-4.4-4.7 0-1 .4-1.9 1-2.6-.1-.2-.4-1.2.1-2.5 0 0 .8-.3 2.6 1a9 9 0 0 1 4.8 0c1.8-1.3 2.6-1 2.6-1 .5 1.3.2 2.3.1 2.5.6.7 1 1.6 1 2.6 0 3.6-2.3 4.5-4.4 4.7.3.3.6.9.6 1.8v2.6c0 .3.2.6.7.5A9.5 9.5 0 0 0 12 2.5z')); } },
+    steam: { bg: '#1b2838', label: 'Steam', draw: g => { g.strokeStyle = '#c7d5e0'; g.fillStyle = '#c7d5e0'; g.lineWidth = 1.6; g.beginPath(); g.arc(15, 9.5, 3.4, 0, 7); g.stroke(); g.beginPath(); g.arc(15, 9.5, 1.5, 0, 7); g.fill(); g.beginPath(); g.arc(8.5, 15.5, 2.4, 0, 7); g.stroke(); g.beginPath(); g.moveTo(10.6, 14.4); g.lineTo(12.6, 11.6); g.stroke(); } },
+    discord: { bg: '#5865F2', label: 'Discord', draw: g => { g.fillStyle = '#fff'; g.fill(P('M18.5 6.4A15 15 0 0 0 15 5.3l-.4.9a13 13 0 0 0-5.2 0L9 5.3a15 15 0 0 0-3.5 1.1C3.3 9.6 2.7 12.8 3 15.9a15 15 0 0 0 4.4 2.2l.9-1.5c-.5-.2-1-.4-1.4-.7l.3-.3a10.6 10.6 0 0 0 9.6 0l.3.3c-.4.3-.9.5-1.4.7l.9 1.5a15 15 0 0 0 4.4-2.2c.4-3.6-.6-6.8-2.5-9.5zM9.5 14c-.9 0-1.6-.8-1.6-1.8s.7-1.8 1.6-1.8 1.6.8 1.6 1.8-.7 1.8-1.6 1.8zm5 0c-.9 0-1.6-.8-1.6-1.8s.7-1.8 1.6-1.8 1.6.8 1.6 1.8-.7 1.8-1.6 1.8z')); } },
+    vscode: { bg: '#1e1e1e', label: 'VS Code', draw: g => { g.fillStyle = '#3ea6ff'; g.fill(P('M17 3l4 2v14l-4 2-9-8-4 3-2-1V9l2-1 4 3zm0 4.5L12 12l5 4.5z')); } },
+    noticias: { bg: '#efe8d8', label: 'Notícias', draw: g => { g.fillStyle = '#1b1813'; g.font = '900 8px Georgia,serif'; g.textAlign = 'center'; g.fillText('NEWS', 12, 9); g.fillRect(5, 11, 14, 1.4); g.fillStyle = '#ffd400'; g.fillRect(5, 13.5, 8, 2.6); g.fillStyle = '#1b1813'; g.fillRect(14, 13.5, 5, 1.2); g.fillRect(14, 15.3, 5, 1.2); g.fillRect(5, 18, 14, 1.2); } },
+    imagens: { bg: '#8fb8ff', label: 'Imagens', draw: g => { g.strokeStyle = '#0b0c0f'; g.lineWidth = 1.6; g.stroke(P('M4 5h16v14H4z')); g.fillStyle = '#0b0c0f'; g.fill(P('M4 17l5-5 4 4 2-2 5 5H4z')); g.beginPath(); g.arc(15.5, 9, 1.6, 0, 7); g.fill(); } },
+    arquivos: { bg: '#F8C14A', label: 'Arquivos', draw: g => { g.fillStyle = '#8a5a00'; g.fill(P('M3 7a1.5 1.5 0 0 1 1.5-1.5h5l2 2h8A1.5 1.5 0 0 1 21 9v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z')); g.fillStyle = '#ffd77a'; g.fill(P('M3 10h18v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z')); } },
+    correio: { bg: '#f2b33d', label: 'Correio', draw: g => { g.strokeStyle = '#16120a'; g.lineWidth = 1.8; g.lineJoin = 'round'; g.stroke(P('M3.5 6h17v12h-17zM4 6.5l8 6 8-6')); } },
+    tela: { bg: '#5fd4ff', label: 'Tela', draw: g => { g.strokeStyle = '#04141b'; g.lineWidth = 1.8; g.stroke(P('M3.5 5h17v11h-17zM9 20h6M12 16v4')); } },
+    clima: { bg: '#ffc960', label: 'Clima', draw: g => { g.fillStyle = '#fff3d1'; g.beginPath(); g.arc(9.5, 9, 3.5, 0, 7); g.fill(); g.fillStyle = '#ffffff'; g.fill(P('M8 18a4 4 0 0 1 .4-8 5 5 0 0 1 9.4 1.5A3.3 3.3 0 0 1 17.5 18z')); } },
+    canva: { bg: '#7d2ae8', label: 'Canva', draw: g => { g.fillStyle = '#fff'; g.font = 'italic 700 9px Georgia,serif'; g.textAlign = 'center'; g.fillText('C', 12, 15.5); } },
+    app: { bg: '#262931', label: 'App', draw: g => { g.strokeStyle = '#f1efe9'; g.lineWidth = 1.7; g.stroke(P('M5 5h6v6H5zM13 5h6v6h-6zM5 13h6v6H5zM13 13h6v6h-6z')); } },
+    drive: { bg: '#ffffff', label: 'Drive', draw: g => { [['#0066da', 'M3.6 18.4l1 1.7c.2.4.5.7.9.9l3.6-6.2H2c0 .4.1.8.3 1.2z'], ['#00ac47', 'M12 8.7L8.4 2.5c-.4.2-.7.5-.9.9L2.3 12.6c-.2.4-.3.8-.3 1.2h7.1z'], ['#ea4335', 'M18.5 21c.4-.2.7-.5.9-.9l.4-.7 2-3.4c.2-.4.3-.8.3-1.2h-7.1l1.5 3z'], ['#00832d', 'M12 8.7l3.6-6.2c-.4-.2-.8-.3-1.2-.3H9.6c-.4 0-.8.1-1.2.3z'], ['#2684fc', 'M14.9 14.8H9.1L5.5 21c.4.2.8.3 1.2.3h10.6c.4 0 .8-.1 1.2-.3z'], ['#ffba00', 'M18.5 9.1l-3.3-5.7c-.2-.4-.5-.7-.9-.9L10.7 8.7l4.2 6.1H22c0-.4-.1-.8-.3-1.2z']].forEach(([c, d]) => { g.fillStyle = c; g.fill(P(d)); }); } },
+    tarefas: { bg: '#1a73e8', label: 'Tarefas', draw: g => { g.strokeStyle = '#fff'; g.lineWidth = 2.2; g.lineCap = 'round'; g.lineJoin = 'round'; g.stroke(P('M7.5 12.3l3 3 6-6.3')); } },
+    lembrete: { bg: '#f2b33d', label: 'Lembretes', draw: g => { g.strokeStyle = '#16120a'; g.lineWidth = 1.8; g.lineCap = 'round'; g.lineJoin = 'round'; g.stroke(P('M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9M10.3 20.5a1.9 1.9 0 0 0 3.4 0')); } },
+    cambio: { bg: '#1f9d55', label: 'Câmbio', draw: g => { g.fillStyle = '#fff'; g.font = '800 15px Montserrat,sans-serif'; g.textAlign = 'center'; g.fillText('$', 12, 17.5); } },
+    cripto: { bg: '#f7931a', label: 'Cripto', draw: g => { g.fillStyle = '#fff'; g.font = '800 15px Montserrat,sans-serif'; g.textAlign = 'center'; g.fillText('₿', 12, 17.5); } },
+    futebol: { bg: '#ffffff', label: 'Futebol', draw: g => { g.strokeStyle = '#111'; g.lineWidth = 1.4; g.beginPath(); g.arc(12, 12, 8.5, 0, 7); g.stroke(); g.fillStyle = '#111'; g.fill(P('M12 8.2l3.2 2.3-1.2 3.8h-4l-1.2-3.8z')); g.stroke(P('M12 8.2V3.6M15.2 10.5l4.3-1.3M14 14.3l2.6 3.7M10 14.3l-2.6 3.7M8.8 10.5l-4.3-1.3')); } },
+    pc: { bg: '#262931', label: 'PC', draw: g => { g.strokeStyle = '#5fd4ff'; g.lineWidth = 1.8; g.lineCap = 'round'; g.stroke(P('M3.5 5h17v11h-17zM9 20h6M12 16v4')); } },
+    mcp: { bg: '#262931', label: 'MCP', draw: g => { g.strokeStyle = '#b39cff'; g.lineWidth = 1.8; g.lineCap = 'round'; g.stroke(P('M7 9l5-5 5 5M12 4v11M6 15h12v4H6z')); } }
+  };
+  const APP_KEY = [[/spotify/, 'spotify'], [/youtube/, 'youtube'], [/discord/, 'discord'], [/steam/, 'steam'], [/vs ?code|visual studio/, 'vscode'], [/gmail/, 'gmail'], [/github/, 'github'], [/canva/, 'canva']];
+  const fold = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  // Quais integrações uma resposta usou (pelos campos e pelo rótulo que o servidor devolve).
+  function used(j) {
+    const out = new Set(), t = fold(j?.topic), lab = fold(j?.opened?.label || j?.opened?.url || '');
+    if (j?.opened) { const k = APP_KEY.find(([rx]) => rx.test(lab)); out.add(k ? k[1] : 'app'); }
+    if (j?.images) out.add('imagens');
+    if ((j?.slides || []).some(s => String(s.layout || '').startsWith('jornal'))) out.add('noticias');
+    if ((j?.slides || []).some(s => s.img?.items?.length) && !out.has('noticias')) out.add('imagens');
+    if (/imagens|fotos/.test(t)) out.add('imagens');
+    if (/jornal|noticias/.test(t)) out.add('noticias');
+    if (/^abrir$/.test(t) && !out.size) out.add('app');
+    if (/agenda/.test(t)) out.add('agenda');
+    if (/e-?mails?|gmail|lixeira/.test(t)) out.add('gmail');
+    if (/github/.test(t)) out.add('github');
+    if (/steam|jogo/.test(t)) out.add('steam');
+    if (/tela/.test(t) || j?.seen) out.add('tela');
+    if (/correio/.test(t)) out.add('correio');
+    if (/arquivo|projetos/.test(t) || j?.salvoEm || j?.file) out.add('arquivos');
+    if (/musica|tocando/.test(t) || /tocando/.test(fold(j?.intro))) { const k = APP_KEY.find(([rx]) => rx.test(lab)); out.add(k ? k[1] : 'youtube'); }
+    if (/spotify/.test(t)) out.add('spotify');
+    if (/^drive$/.test(t)) out.add('drive');
+    if (/^tarefas$/.test(t)) out.add('tarefas');
+    if (/lembrete/.test(t)) out.add('lembrete');
+    if (/cambio/.test(t)) out.add('cambio');
+    if (/cripto/.test(t)) out.add('cripto');
+    if (/futebol/.test(t)) out.add('futebol');
+    if (/^pc$/.test(t)) out.add('pc');
+    if (/mcp/.test(t)) out.add('mcp');
+    if (/canva/.test(t)) out.add('canva');
+    return [...out].filter(k => ICON[k]);
+  }
+
+  // Neurônios de integração: entram, recebem o sinal do núcleo, devolvem e ficam acesos alguns segundos.
+  const live = new Map();   // chave -> { born, until, x, y, k }
+  window.neuralUse = (keys, ms = 9000) => {
+    const now = performance.now();
+    keys.forEach(k => { const o = live.get(k); if (o) o.until = now + ms; else live.set(k, { born: now, until: now + ms, k }); });
+  };
+  // Observa as respostas do /api/chat (sem mudar nada nelas).
+  const _fetch = window.fetch;
+  window.fetch = async function (u, opt) {
+    const r = await _fetch.apply(this, arguments);
+    try { if (String(u).includes('/api/chat') && r.ok) r.clone().json().then(j => { const k = used(j); if (k.length) window.neuralUse(k); }).catch(() => {}); } catch {}
+    // saudação do dia: acende o que ela consultou (clima, agenda, e-mails, GitHub, notícias)
+    try { if (String(u).includes('/api/greeting') && r.ok) r.clone().json().then(j => { const b = j?.brief || j || {}; const k = [b.weather && 'clima', b.agenda?.length && 'agenda', b.gmail && 'gmail', b.github && 'github', b.news && 'noticias'].filter(Boolean); if (k.length) window.neuralUse(k, 11000); }).catch(() => {}); } catch {}
+    return r;
+  };
+
+  // Desenho: um canvas próprio por cima da rede (abaixo do conteúdo).
+  const cv = document.createElement('canvas'); cv.id = 'neural-integ'; cv.setAttribute('aria-hidden', 'true');
+  cv.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none';
+  document.getElementById('neural')?.after(cv);
+  const g = cv.getContext('2d');
+  let W = 0, H = 0;
+  const size = () => { const d = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = W * d; cv.height = H * d; g.setTransform(d, 0, 0, d, 0, 0); };
+  addEventListener('resize', size); size();
+  const col = () => window.__neural?.col?.() || [242, 179, 61];
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const ease = x => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+
+  (function loop(now) {
+    g.clearRect(0, 0, W, H);
+    for (const [k, o] of live) if (now > o.until + 900) live.delete(k);
+    if (live.size) {
+      const orb = document.getElementById('orb')?.getBoundingClientRect();
+      if (orb && orb.width) {
+        const ox = orb.left + orb.width / 2, oy = orb.top + orb.height / 2, R = Math.max(120, Math.min(W, H) * .22), c = col();
+        const list = [...live.values()], n = list.length;
+        // Lugar de cada ícone: em volta do núcleo, de preferência dos lados, fugindo da legenda, do estado, da caixa de texto
+        // e dos outros ícones. O lugar escolhido fica guardado (o ícone não pula de um lado para o outro).
+        const pad = 10, boxes = ['cap', 'state', 'you', 'tx', 'err'].map(id => document.getElementById(id)?.getBoundingClientRect())
+          .filter(r => r && r.width && r.height).map(r => ({ l: r.left - pad, t: r.top - pad, r: r.right + pad, b: r.bottom + pad }));
+        const capEl = document.querySelector('#cap .g'); if (capEl) { const r = capEl.getBoundingClientRect(); boxes.push({ l: r.left - 24, t: r.top - 16, r: r.right + 24, b: r.bottom + 16 }); }
+        const hit = (x, y, rr, extra) => [...boxes, ...extra].some(b => x + rr > b.l && x - rr < b.r && y + rr > b.t && y - rr < b.b) || x < rr + 6 || x > W - rr - 6 || y < 56 + rr || y > H - rr - 6;
+        const ANG = [0, 180, -25, 205, 25, 155, -50, 230, 50, 130, -75, 255, 75, 105, -90, 90].map(d => d * Math.PI / 180);
+        const taken = [], orbR = orb.width / 2;
+        for (const o of list) {
+          if (o.ang != null && !hit(ox + Math.cos(o.ang) * o.rad, oy + Math.sin(o.ang) * o.rad * .85, 34, taken)) { taken.push(box(ox + Math.cos(o.ang) * o.rad, oy + Math.sin(o.ang) * o.rad * .85)); continue; }
+          o.ang = null;
+          for (const rad of [orbR + 70, orbR + 140, orbR + 210]) {
+            for (const ang of ANG) { const x = ox + Math.cos(ang) * rad, y = oy + Math.sin(ang) * rad * .85; if (!hit(x, y, 34, taken)) { o.ang = ang; o.rad = rad; break; } }
+            if (o.ang != null) break;
+          }
+          if (o.ang == null) { o.ang = ANG[taken.length % ANG.length]; o.rad = orbR + 70; }
+          taken.push(box(ox + Math.cos(o.ang) * o.rad, oy + Math.sin(o.ang) * o.rad * .85));
+        }
+        function box(x, y) { return { l: x - 40, t: y - 30, r: x + 40, b: y + 44 }; }
+        list.forEach((o, i) => {
+          const life = ease((now - o.born) / 700), fade = now > o.until ? 1 - (now - o.until) / 900 : 1, al = Math.max(0, life * fade);
+          const k = .55 + .45 * life, tx = ox + Math.cos(o.ang) * o.rad * k, ty = oy + Math.sin(o.ang) * o.rad * .85 * k;
+          o.x = tx; o.y = ty;
+          // sinapse curva com dois sinais: ida (pedido) e volta (resposta)
+          const mx = (ox + tx) / 2 + (ty - oy) * .15, my = (oy + ty) / 2 - (tx - ox) * .15;
+          g.strokeStyle = rgba(c, .35 * al); g.lineWidth = 1.3; g.setLineDash([3, 5]); g.lineDashOffset = -now / 40;
+          g.beginPath(); g.moveTo(ox, oy); g.quadraticCurveTo(mx, my, tx, ty); g.stroke(); g.setLineDash([]);
+          if (!RMq.matches) for (const dir of [0, 1]) {
+            const t0 = ((now - o.born) / 1300 + dir * .5) % 1, t = dir ? 1 - t0 : t0, u = 1 - t;
+            const px = u * u * ox + 2 * u * t * mx + t * t * tx, py = u * u * oy + 2 * u * t * my + t * t * ty;
+            g.fillStyle = rgba(dir ? [124, 201, 164] : c, .95 * al); g.beginPath(); g.arc(px, py, 2.4, 0, 7); g.fill();
+          }
+          // o neurônio: halo, círculo da marca, ícone e nome
+          const ic = ICON[o.k], r = 19, pulse = 1 + .06 * Math.sin(now / 260 + i);
+          g.globalAlpha = al;
+          const halo = g.createRadialGradient(tx, ty, r * .6, tx, ty, r * 2.4); halo.addColorStop(0, rgba(c, .35)); halo.addColorStop(1, rgba(c, 0));
+          g.fillStyle = halo; g.beginPath(); g.arc(tx, ty, r * 2.4, 0, 7); g.fill();
+          g.fillStyle = ic.bg; g.beginPath(); g.arc(tx, ty, r * pulse, 0, 7); g.fill();
+          g.strokeStyle = rgba(c, .9); g.lineWidth = 1.5; g.beginPath(); g.arc(tx, ty, r * pulse + 3, 0, 7); g.stroke();
+          g.save(); g.translate(tx - 12 * .95, ty - 12 * .95); g.scale(.95, .95); ic.draw(g); g.restore();
+          g.font = '600 11px Montserrat,sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(241,239,233,.85)';
+          g.fillText(ic.label, tx, ty + r + 17);
+          g.globalAlpha = 1;
+        });
+      }
+    }
+    requestAnimationFrame(loop);
+  })(performance.now());
+})();
+</script>
+
+<!-- ===== Lembretes, futebol e ícones novos =====
+     - Lembrete/alarme/timer na hora: um toque de aviso, o slide do lembrete e o Jarvis fala (espera terminar o que estiver falando).
+     - Futebol: layout "placar" (escudos, placar, status, últimos 5 jogos e o próximo) e "tabela" (classificação com zonas).
+     - Rede neural: ícones de Lembretes, Câmbio, Cripto, Futebol e PC. Para tirar, apague este bloco. -->
+<style id="extras-css">
+.slide.g-placar,.slide.g-tabela{padding-top:clamp(8px,2vh,18px)}
+.slide.g-drive .g-bg,.slide.g-tarefas .g-bg{display:none}
+.gd-card{height:100%;display:grid;grid-template-rows:auto 1fr;gap:12px;padding:clamp(14px,2vw,24px);border-radius:20px;background:linear-gradient(180deg,#121a26,#0c0f14);border:1px solid #233350;overflow:hidden}
+.gd-card h2{margin:0;font:800 clamp(18px,1.9vw,26px) 'Montserrat';display:flex;align-items:center;gap:10px}
+.gd-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;align-content:start;overflow:hidden}
+.gd-list a{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;background:#ffffff08;border:1px solid #ffffff12;color:inherit;text-decoration:none;transition:border-color .2s,transform .2s}
+.gd-list a:hover{border-color:#4b7bd0;transform:translateY(-2px)}
+.gd-list .n{position:absolute;margin:-30px 0 0 -6px;font:700 10px var(--mono);color:#8fb8ff}
+.gd-ic{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font:800 10px var(--mono);color:#fff}
+.gd-list b{display:block;font-size:14px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gd-list small{font-size:12px;opacity:.65}
+.tk-card{height:100%;display:grid;grid-template-rows:auto 1fr;gap:12px;padding:clamp(14px,2vw,24px);border-radius:20px;background:linear-gradient(180deg,#111a2b,#0c0f15);border:1px solid #23365a;overflow:hidden}
+.tk-card h2{margin:0;font:800 clamp(18px,1.9vw,26px) 'Montserrat'}
+.tk-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;align-content:start;overflow:hidden}
+.tk-list li{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:#ffffff07;border:1px solid #ffffff10;font-size:14.5px;animation:rise .5s var(--ease) both}
+.tk-list li i{width:20px;height:20px;flex:none;border-radius:50%;border:2px solid #5b8def;margin-top:1px}
+.tk-list small{display:block;font-size:11.5px;opacity:.6;margin-top:2px}
+.slide.g-placar .g-bg,.slide.g-tabela .g-bg{display:none}
+.sp-card{position:relative;height:100%;display:grid;grid-template-rows:auto 1fr auto;gap:14px;padding:clamp(14px,2vw,26px);border-radius:20px;overflow:hidden;
+  background:radial-gradient(80% 90% at 50% 0,#163022,transparent 70%),linear-gradient(180deg,#0f1a14,#0b0f0c);border:1px solid #234a35;box-shadow:0 30px 70px -30px #000}
+.sp-card::before{content:'';position:absolute;inset:0;pointer-events:none;opacity:.08;background:repeating-linear-gradient(90deg,#fff 0 60px,transparent 60px 120px)}
+.sp-top{display:flex;justify-content:space-between;align-items:center;font:600 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:#9fd3b4;position:relative}
+.sp-top .live{color:#ff5a5a;display:inline-flex;gap:6px;align-items:center}.sp-top .live i{width:8px;height:8px;border-radius:50%;background:#ff3b3b;box-shadow:0 0 10px #ff3b3b;animation:bp 1.4s infinite}
+.sp-score{position:relative;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:clamp(10px,2vw,30px)}
+.sp-team{display:grid;justify-items:center;gap:10px;text-align:center}
+.sp-team img{width:clamp(64px,9vw,118px);height:clamp(64px,9vw,118px);object-fit:contain;filter:drop-shadow(0 10px 20px #0009)}
+.sp-team b{font:800 clamp(16px,1.8vw,24px) 'Montserrat';letter-spacing:-.01em}
+.sp-team.me b{color:var(--acc2)}
+.sp-nums{display:flex;align-items:center;gap:clamp(8px,1.4vw,18px);font:800 clamp(52px,8vw,108px)/1 'Montserrat';letter-spacing:-.04em}
+.sp-nums span{min-width:1ch;text-align:center;padding:.04em .18em;border-radius:14px;background:#ffffff0d;border:1px solid #ffffff14}
+.sp-nums em{font-style:normal;font-size:.4em;opacity:.5}
+.sp-foot{position:relative;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font-size:13.5px;color:#cfe9da}
+.sp-form{display:flex;gap:5px;align-items:center}.sp-form small{margin-right:4px;font:500 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;opacity:.7}
+.sp-form b{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font:800 11px 'Montserrat';color:#0b0c0f}
+.sp-form b.V{background:#5dd39e}.sp-form b.E{background:#c9c9c9}.sp-form b.D{background:#ff7a6b}
+.sp-next{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:12px;background:#ffffff0a;border:1px solid #ffffff14}
+.sp-next img{width:26px;height:26px;object-fit:contain}
+.sp-tab{height:100%;display:grid;grid-template-rows:auto 1fr;gap:10px;padding:clamp(12px,1.8vw,22px);border-radius:20px;background:linear-gradient(180deg,#0f1a14,#0b0f0c);border:1px solid #234a35;overflow:hidden}
+.sp-tab h2{margin:0;font:800 clamp(18px,1.8vw,24px) 'Montserrat';color:#e9f6ee}
+.sp-rows{display:grid;grid-template-columns:1fr 1fr;grid-auto-flow:column;grid-template-rows:repeat(11,auto);gap:2px 18px;align-content:start;overflow:hidden}
+.sp-row{display:grid;grid-template-columns:24px 20px 1fr 32px 28px 36px;align-items:center;gap:7px;padding:2px 8px;border-radius:7px;font-size:12.5px;color:#d9eee2;border-left:3px solid transparent}
+.sp-row img{width:18px;height:18px;object-fit:contain}
+.sp-row .p{font:800 13px var(--mono);opacity:.8}.sp-row .pt{font-weight:800;text-align:right;color:#fff}.sp-row .n{opacity:.6;text-align:right;font-size:12px}
+.sp-row.lib{border-left-color:#3aa0ff}.sp-row.sul{border-left-color:#5dd39e}.sp-row.reb{border-left-color:#ff6b6b;background:#ff6b6b0d}
+.sp-head{font:600 10.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;opacity:.55}
+@media (max-width:760px){.sp-rows{grid-template-columns:1fr}.sp-nums{font-size:56px}.sp-team img{width:64px;height:64px}}
+/* lembrete na tela */
+.slide.g-lembrete .g-bg{display:none}
+.lb-card{height:100%;display:grid;place-items:center;text-align:center;gap:14px;align-content:center}
+.lb-ico{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle,color-mix(in oklab,var(--acc) 30%,#14161a),#101114 70%);border:1px solid var(--acc);box-shadow:0 0 0 10px #f2b33d14,0 0 60px -10px var(--acc);animation:lbring 1.2s ease-in-out 3}
+.lb-ico svg{width:46px;height:46px;stroke:var(--acc2)!important;fill:none!important;stroke-width:1.7!important;stroke-linecap:round;stroke-linejoin:round}
+@keyframes lbring{0%,100%{transform:rotate(0)}20%{transform:rotate(-14deg)}40%{transform:rotate(12deg)}60%{transform:rotate(-8deg)}80%{transform:rotate(5deg)}}
+.lb-card .k{font:600 12px var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--acc2)}
+.lb-card h1{margin:0;font:800 clamp(30px,5vw,60px)/1.05 'Montserrat';letter-spacing:-.03em;max-width:20ch}
+</style>
+<script id="extras-js">
+(() => {
+  const E = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const LAY = {
+    placar: s => {
+      const p = s.placar || {}, me = n => (p.team && n === p.team) ? ' me' : '';
+      const team = t => `<div class="sp-team${me(t.name)}">${t.logo ? `<img alt="" src="${E(t.logo)}">` : ''}<b>${E(t.name)}</b></div>`;
+      return `<div class="sp-card"><div class="sp-top"><span>${E(p.comp || 'Futebol')}</span>${p.live ? `<span class="live"><i></i>${E(p.status)}</span>` : `<span>${E(p.status)} · ${E(p.when || '')}</span>`}</div>
+        <div class="sp-score">${team(p.home || {})}<div class="sp-nums"><span>${E(p.home?.score ?? '-')}</span><em>×</em><span>${E(p.away?.score ?? '-')}</span></div>${team(p.away || {})}</div>
+        <div class="sp-foot">${p.recent?.length ? `<div class="sp-form"><small>Últimos jogos</small>${p.recent.map(r => `<b class="${E(r)}">${E(r)}</b>`).join('')}</div>` : '<div></div>'}
+        ${p.next ? `<div class="sp-next">${p.next.logo ? `<img alt="" src="${E(p.next.logo)}">` : ''}<span>Próximo: <b>${p.next.home ? 'x' : '@'} ${E(p.next.vs)}</b> · ${E(p.next.when)}</span></div>` : ''}</div></div>`;
+    },
+    tabela: s => {
+      const rows = (s.tabela || []).slice(0, 20), n = rows.length;
+      const zone = r => r.pos <= 4 ? 'lib' : r.pos <= 6 ? 'sul' : r.pos > n - 4 ? 'reb' : '';
+      const row = r => `<div class="sp-row ${zone(r)}"><span class="p">${r.pos}</span>${r.logo ? `<img alt="" src="${E(r.logo)}">` : '<span></span>'}<span>${E(r.team)}</span><span class="pt">${r.pts}</span><span class="n">${r.j}</span><span class="n">${r.sg > 0 ? '+' : ''}${r.sg}</span></div>`;
+      const head = '<div class="sp-row sp-head"><span>#</span><span></span><span>Time</span><span style="text-align:right">P</span><span style="text-align:right">J</span><span style="text-align:right">SG</span></div>';
+      return `<div class="sp-tab"><h2>${E(s.title)}</h2><div class="sp-rows">${head}${rows.slice(0, 10).map(row).join('')}${n > 10 ? head + rows.slice(10).map(row).join('') : ''}</div></div>`;
+    },
+    drive: s => {
+      const C = { pasta: ['#5f6368', 'DIR'], documento: ['#1a73e8', 'DOC'], planilha: ['#188038', 'XLS'], 'apresentação': ['#f9ab00', 'PPT'], PDF: ['#d93025', 'PDF'], imagem: ['#9334e6', 'IMG'], 'vídeo': ['#e8710a', 'VID'], 'áudio': ['#12b5cb', 'AUD'], zip: ['#5f6368', 'ZIP'], arquivo: ['#5f6368', 'ARQ'] };
+      const ord = ['1º', '2º', '3º', '4º', '5º'];
+      return `<div class="gd-card"><h2>${E(s.title)}</h2><ul class="gd-list">${(s.drive || []).slice(0, 8).map((f, i) => { const c = C[f.kind] || C.arquivo; return `<li><a href="${E(/^https:\/\//.test(f.link) ? f.link : '#')}" target="_blank" rel="noopener noreferrer"><span class="gd-ic" style="background:${c[0]}">${c[1]}</span><span><b>${E(f.name)}</b><small>${E([i < 5 ? ord[i] : '', f.kind, f.modified, f.owner].filter(Boolean).join(' · '))}</small></span></a></li>`; }).join('')}</ul></div>`;
+    },
+    tarefas: s => `<div class="tk-card"><h2>${E(s.title)}</h2><ul class="tk-list">${(s.tarefas || []).map((t, i) => `<li style="animation-delay:${i * 60}ms"><i></i><span>${E(t.title)}${t.list || t.due ? `<small>${E([t.list, t.due ? 'até ' + new Date(t.due).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : ''].filter(Boolean).join(' · '))}</small>` : ''}</span></li>`).join('')}</ul></div>`,
+    lembrete: s => `<div class="lb-card"><div class="lb-ico"><svg viewBox="0 0 24 24" aria-hidden="true">${s.kind === 'timer' ? '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/>' : '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/>'}</svg></div><span class="k">${E(s.kind === 'alarme' ? 'Alarme' : s.kind === 'timer' ? 'Timer' : 'Lembrete')}</span><h1>${E(s.title)}</h1></div>`
+  };
+  const _gs = window.glassSlide;
+  window.glassSlide = (s, k) => LAY[s.layout] ? LAY[s.layout](s) : (_gs ? _gs(s, k) : null);
+
+  // Toque de aviso (sem arquivo de som): três bipes curtos.
+  function chime() {
+    try { const ac = new (window.AudioContext || window.webkitAudioContext)(); [0, .22, .44].forEach(t => { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = t ? 880 : 660; o.type = 'sine';
+      g.gain.setValueAtTime(0, ac.currentTime + t); g.gain.linearRampToValueAtTime(.25, ac.currentTime + t + .02); g.gain.exponentialRampToValueAtTime(.001, ac.currentTime + t + .2);
+      o.connect(g).connect(ac.destination); o.start(ac.currentTime + t); o.stop(ac.currentTime + t + .22); }); setTimeout(() => ac.close(), 1200); } catch {}
+  }
+  // Na hora do lembrete: espera o Jarvis terminar de falar, mostra e fala.
+  const queue = [];
+  async function fire() {
+    if (!queue.length || ['speak', 'think'].includes(document.body.dataset.m)) return setTimeout(fire, 1500);
+    const x = queue.shift(), who = typeof withAddr === 'function' ? withAddr('') .replace(/^, /, '') : 'senhor';
+    const say = x.kind === 'alarme' ? `Alarme, ${who || 'senhor'}. Hora de levantar.` : x.kind === 'timer' ? `${x.text} terminou, ${who || 'senhor'}.` : `Lembrete, ${who || 'senhor'}: ${x.text}.`;
+    chime(); window.neuralUse?.(['lembrete'], 8000);
+    try { const r = ++run; const deck = [{ title: x.kind === 'alarme' ? 'Hora de levantar' : x.text, layout: 'lembrete', kind: x.kind, narration: say }];
+      setMode('speak'); await present(deck, 'Lembrete', r); if (r === run) { if (on) listen(); else setMode('idle'); } } catch {}
+    if (queue.length) setTimeout(fire, 800);
+  }
+  try { const es = window.__es = window.__es || new EventSource('/api/ui/events'); es.addEventListener('lembrete', e => { try { queue.push(JSON.parse(e.data)); fire(); } catch {} }); } catch {}
 })();
 </script>
 </body>

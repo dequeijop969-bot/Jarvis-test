@@ -187,7 +187,6 @@ namespace JarvisSetup
     class SetupForm : Form
     {
         readonly CheckBox desk = new CheckBox(), open = new CheckBox();
-        readonly TextBox key = new TextBox();
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int v, int size);
         readonly ProgressBar bar = new ProgressBar();
         readonly Label status = new Label();
@@ -197,7 +196,7 @@ namespace JarvisSetup
 
         public SetupForm()
         {
-            Text = "Instalar JARVIS"; ClientSize = new Size(460, 372); FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
+            Text = "Instalar JARVIS"; ClientSize = new Size(460, 342); FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen; BackColor = Bg; ForeColor = Fg; Font = new Font("Segoe UI", 10f);
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
             HandleCreated += (o, e) => { try { int on = 1; DwmSetWindowAttribute(Handle, 20, ref on, 4); } catch { } };   // barra de título escura, como o resto
@@ -206,15 +205,12 @@ namespace JarvisSetup
             var where = new Label { Text = "Instalar em: " + Program.Dir, ForeColor = Mute, Font = new Font("Segoe UI", 8.5f), AutoSize = false, Size = new Size(412, 34), Location = new Point(27, 92) };
             desk.Text = "Criar atalho na área de trabalho"; desk.Checked = true; desk.AutoSize = true; desk.Location = new Point(27, 130);
             open.Text = "Abrir o JARVIS ao terminar"; open.Checked = true; open.AutoSize = true; open.Location = new Point(27, 156);
-            var keyL = new Label { Text = "Chave do Gemini (opcional, dá para pôr depois em jarvis\\.env)", ForeColor = Mute, Font = new Font("Segoe UI", 8.5f), AutoSize = true, Location = new Point(27, 190) };
-            key.Location = new Point(27, 210); key.Size = new Size(300, 26); key.UseSystemPasswordChar = true; key.BackColor = Color.FromArgb(22, 23, 28); key.ForeColor = Fg; key.BorderStyle = BorderStyle.FixedSingle;
-            var get = new LinkLabel { Text = "Pegar uma grátis", AutoSize = true, Location = new Point(336, 213), LinkColor = Acc, ActiveLinkColor = Fg };
-            get.LinkClicked += (s, e) => { try { Process.Start("https://aistudio.google.com/apikey"); } catch { } };
-            bar.Location = new Point(27, 262); bar.Size = new Size(406, 10); bar.Visible = false;
-            status.Location = new Point(27, 278); status.Size = new Size(406, 36); status.ForeColor = Mute; status.Font = new Font("Segoe UI", 8.5f);
-            go.Text = "Instalar"; go.Size = new Size(130, 36); go.Location = new Point(303, 320); go.FlatStyle = FlatStyle.Flat; go.BackColor = Acc; go.ForeColor = Color.FromArgb(22, 18, 10);
+            var note = new Label { Text = "Depois de instalar, entre com a sua conta JARVIS (a mesma do site) e ele já responde.", ForeColor = Mute, Font = new Font("Segoe UI", 8.5f), AutoSize = false, Size = new Size(406, 34), Location = new Point(27, 190) };
+            bar.Location = new Point(27, 232); bar.Size = new Size(406, 10); bar.Visible = false;
+            status.Location = new Point(27, 248); status.Size = new Size(406, 36); status.ForeColor = Mute; status.Font = new Font("Segoe UI", 8.5f);
+            go.Text = "Instalar"; go.Size = new Size(130, 36); go.Location = new Point(303, 290); go.FlatStyle = FlatStyle.Flat; go.BackColor = Acc; go.ForeColor = Color.FromArgb(22, 18, 10);
             go.Font = new Font("Segoe UI", 10f, FontStyle.Bold); go.FlatAppearance.BorderSize = 0; go.Click += (s, e) => Run();
-            Controls.AddRange(new Control[] { title, sub, where, desk, open, keyL, key, get, bar, status, go });
+            Controls.AddRange(new Control[] { title, sub, where, desk, open, note, bar, status, go });
             AcceptButton = go;
         }
 
@@ -225,13 +221,12 @@ namespace JarvisSetup
             if (zip == null) { MessageBox.Show("Este instalador está incompleto. Baixe de novo pelo site do JARVIS.", "Instalar JARVIS", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
             foreach (var p in Process.GetProcessesByName("JarvisDesktop")) { try { p.Kill(); p.WaitForExit(3000); } catch { } }   // atualização: fecha o antigo
             Program.KillServerPublic();
-            go.Enabled = false; desk.Enabled = false; open.Enabled = false; key.Enabled = false; bar.Visible = true;
+            go.Enabled = false; desk.Enabled = false; open.Enabled = false; bar.Visible = true;
             try
             {
                 Program.Install(zip, desk.Checked, (pct, what) => { bar.Value = Math.Min(100, pct); status.Text = pct < 92 ? "Copiando " + what : "Criando atalhos…"; Application.DoEvents(); });
             }
             catch (Exception ex) { status.Text = "Falhou: " + ex.Message; go.Enabled = true; return; }
-            try { Program.SaveGeminiKey(key.Text); } catch { /* a chave pode ser posta depois no .env */ }
             bool node = Program.NodeInstalled();
             if (!node && MessageBox.Show("O JARVIS precisa do Node.js (versão 20.6 ou mais nova), e ele não está instalado.\n\nAbrir o site do Node.js para baixar a versão LTS?", "Falta o Node.js",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)

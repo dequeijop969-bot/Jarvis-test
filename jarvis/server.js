@@ -18,9 +18,17 @@ import { loadModels, publicLevels } from './lib/models.js';
 import { friendlyAIError, ProviderError } from './lib/router.js';
 import { getProfile, saveProfile, isComplete, addressing, greetingWord } from './lib/profile.js';
 import { geocode, currentWeather, weatherSpeech } from './lib/weather.js';
-import { headlines, newsSpeech } from './lib/news.js';
+import { headlines, newsSpeech, searchNews, jornalDeck, newsImage } from './lib/news.js';
 import * as google from './lib/google.js';
 import * as canva from './lib/canva.js';
+import * as spotify from './lib/spotify.js';
+import * as reminders from './lib/reminders.js';
+import * as money from './lib/money.js';
+import * as football from './lib/football.js';
+import * as pcctl from './lib/pccontrol.js';
+import * as gdrive from './lib/gdrive.js';
+import * as gtasks from './lib/gtasks.js';
+let lastDrive = null;   // última lista do Drive mostrada ("abre o primeiro")
 import * as actions from './lib/actions.js';
 import * as calendar from './lib/calendar.js';
 import * as github from './lib/github.js';
@@ -89,7 +97,7 @@ function briefGithub(s) {
 
 /* ---------- Estado para a interface (nada sensível) ---------- */
 function integrations() {
-  return { conta: conta.status(), gmail: google.googleStatus(), canva: canva.canvaStatus(), keys: keys.allStatus(), actions: actions.allToggles(), images: images.imagesStatus(),
+  return { conta: conta.status(), gmail: google.googleStatus(), canva: canva.canvaStatus(), spotify: spotify.status(), gdrive: { on: google.canDrive(), save: google.canDriveSave() }, gtasks: { on: google.canTasks() }, keys: keys.allStatus(), actions: actions.allToggles(), images: images.imagesStatus(),
     voice: { eleven: elevenReady(), voices: VOICES }, workspace: workspace.status(), mcp: mcp.status(), game: gameplay.status(), gameEnd: lastGameEnd, mascot: { connected: mascot.connected() }, launcher: { apps: launcher.customApps().map(a => ({ name: a.name, file: a.path.split(/[\/]/).pop() })), windows: process.platform === 'win32', installed: launcher.installedApps().length } };
 }
 function publicProfile(p) {
@@ -121,6 +129,7 @@ async function executeAction({ kind, params }) {
     const moved = ok.length ? await devicefiles.trash(ok) : [];
     return { trashed: moved.map(f => path.basename(f)), skipped: params.paths.length - moved.length };
   }
+  if (kind === 'pc_power') { await pcctl.power(params.op, params.minutes); return { power: params }; }
   if (kind === 'calendar_create') { const ev = await google.createCalendarEvent(params); calendar._clearCalendarCache(); return { event: { title: ev.title, start: ev.start, end: ev.end, link: ev.link } }; }
   if (kind === 'github_comment') return github.comment(params.repo, params.pr ?? params.issue, params.body);
   if (kind === 'github_labels') return github.addLabels(params.repo, params.pr ?? params.issue, params.labels);
@@ -170,6 +179,49 @@ async function repoBlurb(o) {
   });
   return String(r.data?.text || '').replace(/\s+/g, ' ').trim();
 }
+// Jornal junto da resposta: a IA marcou um assunto atual ("jornal"); se o tema está mesmo em alta (3 ou mais matérias
+// nos últimos 2 dias), a resposta abre com a montagem da palavra e termina com a capa e até 3 manchetes com foto.
+// Pergunta sobre algo que está acontecendo ("o que está acontecendo com X", "o que houve com X", "novidades de X",
+// "últimas do X", "X hoje"): vale conferir as notícias mesmo que a IA não tenha marcado o assunto.
+const NEWSY = /\b(o que (esta|ta) acontecendo|o que (aconteceu|houve|rolou)|novidades?|ultimas|polemica|resultado|placar|repercuss\w*|o que se sabe|em alta|bombando)\b\s*(?:com|de|do|da|dos|das|sobre|no|na|em)?\s*(.*)$/;
+function newsTerm(text) {
+  const t = String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const m = t.match(NEWSY), rest = m?.[m.length - 1]; if (!rest) return '';
+  const words = rest.replace(/\b(hoje|agora|ultimamente|esses dias|por favor|senhor|jarvis)\b/g, '').trim().split(' ').filter(Boolean);
+  if (!words.length || words.length > 5) return '';
+  // devolve as mesmas palavras do texto original (com acento e maiúscula)
+  const orig = String(text).replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim().split(' ');
+  const fold = w => w.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const out = orig.filter(w => words.includes(fold(w)) && !/^(o|a|os|as|de|do|da)$/i.test(w));
+  return out.join(' ').slice(0, 40);
+}
+async function withJornal(out, p, text = '') {
+  const term = out?.jornal || newsTerm(text); if (!term) return out;
+  try {
+    const n = await withTimeout(searchNews(p, term, 4), 3500);
+    if ((n.top || []).length < 3) return out;
+    const a = addressing(p), deck = jornalDeck(n, a), [intro, capa, ...pages] = deck.slides;
+    const keep = pages.slice(0, 3);
+    capa.narration = `E nas manchetes de hoje sobre ${term}: ${n.top.slice(0, 3).map(x => x.title.replace(/[.;:]+$/, '')).join('; ')}.`;
+    const cut = (pr, ms) => Promise.race([pr, new Promise(res => setTimeout(() => res(null), ms))]);
+    await Promise.all([capa, ...keep].map(async s => {
+      try { const url = await cut(newsImage(s.image, p?.lang), 3500); const it = url && images.registerUrl(url, { title: s.title, source: s.jornal?.source });
+        if (it) s.img = { query: s.image, provider: 'bing', items: [it] }; } catch { /* sem foto */ }
+    }));
+    if (out.intro) intro.narration = out.intro;
+    const slides = [intro, ...(out.slides || []), capa, ...keep];
+    return { ...out, intro: '', chart: out.slides?.length ? out.chart : null, slides };
+  } catch { return out; }   // sem notícias: a resposta da IA segue como veio
+}
+setInterval(() => {
+  try {
+    for (const x of reminders.due()) {
+      mascot.uiEmit('lembrete', { id: x.id, kind: x.kind, text: x.text });
+      mascot.emit('emocao', { nome: 'surpreso', segundos: 4 });
+      log.info(`[lembrete] ${x.kind}: ${x.text}`);
+    }
+  } catch { /* segue */ }
+}, 5000).unref?.();
 async function handleIntent(it, p, screen, text = '') {
   const a = addressing(p), r = (t, topic) => ({ ...integrationReply(t, topic), meta: { provider: null, model: null, tier: 'local', degraded: false } });
   const fail = (e, what) => r(e.code ? e.message : `Não consegui ler ${what} agora, ${a.short}. Confira a conexão em Ajustes.`, what);
@@ -255,6 +307,184 @@ async function handleIntent(it, p, screen, text = '') {
       return r(github.summarySpeech(sm, it.focus), 'GitHub');
     } catch (e) { return fail(e, 'o GitHub'); }
   }
+  /* ---------- Google Drive ---------- */
+  if (it.kind === 'drive') {
+    const meta = { provider: null, model: null, tier: 'local', degraded: false }, rr = t => ({ ...integrationReply(t, 'Drive'), meta });
+    if (!google.canDrive()) return rr(`O Drive não está conectado, ${a.short}. Conecte o Google em Ajustes marcando todas as caixas.`);
+    try {
+      if (it.op === 'abrir') {
+        const f = lastDrive && Date.now() - lastDrive.at < 15 * 60_000 ? lastDrive.files[it.n] : null;
+        if (!f) return null;   // sem lista recente do Drive: "abre o primeiro" é de outra coisa
+        if (!/^https:\/\//.test(f.link)) return rr(`Esse arquivo não tem link para abrir, ${a.short}.`);
+        if (mascot.canOpen('navegador')) mascot.action({ acao: 'abrir_url', alvo: 'navegador', url: f.link }, f.name);
+        else await launcher.openTarget({ type: 'url', url: f.link, label: f.name }).catch(() => {});
+        return { ...rr(`Abrindo ${f.name}, ${a.short}.`), opened: { type: 'url', label: 'Google Drive', url: f.link } };
+      }
+      if (it.op === 'salvar') {
+        const lm = correio.lastMade(24 * 3600_000);
+        if (!lm?.path) return rr(`Não há arquivo recente meu para salvar, ${a.short}. Peça um PDF, planilha ou site e depois diga "salva no Drive".`);
+        const f = await gdrive.upload(lm.path, lm.name);
+        return { ...rr(`Salvo no seu Drive, ${a.short}: ${f.name}, na pasta Jarvis.`), drive: f };
+      }
+      const files = it.op === 'buscar' ? await gdrive.search(it.q) : await gdrive.recent();
+      lastDrive = { files, at: Date.now() };
+      if (!files.length) return rr(it.op === 'buscar' ? `Não achei nada com "${it.q}" no seu Drive, ${a.short}.` : `Seu Drive está vazio, ${a.short}. Minimalismo admirável.`);
+      const first = files[0], when = d => { try { return new Date(d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }).replace(/.$/, ''); } catch { return ''; } };
+      const say = it.op === 'buscar'
+        ? `Achei ${files.length === 1 ? 'um arquivo' : `${files.length} arquivos`} com "${it.q}", ${a.short}. O primeiro é ${first.name}, ${first.kind}, mexido em ${when(first.modified)}. Diga "abre o primeiro" para abrir.`
+        : `Seus arquivos mais recentes no Drive, ${a.short}: ${files.slice(0, 3).map(f => f.name).join('; ')}. Diga "abre o primeiro" para abrir.`;
+      return { topic: 'Drive', intro: '', chart: null, outro: '', remember: [], meta,
+        slides: [{ title: it.op === 'buscar' ? `Drive: "${it.q}"` : 'Recentes no Drive', layout: 'drive', drive: files.map(f => ({ name: f.name, kind: f.kind, modified: when(f.modified), owner: f.owner, link: f.link })), narration: say }] };
+    } catch (e) { return rr(`${e.message || 'O Drive não respondeu agora.'}`); }
+  }
+  /* ---------- Google Tasks ---------- */
+  if (it.kind === 'tasks') {
+    const meta = { provider: null, model: null, tier: 'local', degraded: false }, rr = t => ({ ...integrationReply(t, 'Tarefas'), meta });
+    if (!google.canTasks()) return rr(`O Google Tasks não está conectado, ${a.short}. Conecte o Google em Ajustes marcando todas as caixas.`);
+    try {
+      if (it.op === 'add') {
+        const r = await gtasks.add(it.title, it.list);
+        return rr(r.found === 'criada' ? `Criei a lista ${r.list.title} e pus ${r.task.title} nela, ${a.short}.` : `Anotado em ${r.list.title}, ${a.short}: ${r.task.title}.`);
+      }
+      if (it.op === 'concluir') {
+        const done = await gtasks.complete(it.text);
+        return rr(done ? `Riscado, ${a.short}: ${done.title}. Um a menos.` : `Não achei "${it.text}" nas suas tarefas pendentes, ${a.short}.`);
+      }
+      let title, items, sub = '';
+      if (it.list) { const r = await gtasks.pending(it.list); title = r.list.title; items = r.items.map(x => ({ title: x.title, due: x.due })); if (!r.found) sub = ` (não achei a lista "${it.list}"; mostrando ${r.list.title})`; }
+      else { const all = await gtasks.allPending(); title = 'Tarefas pendentes'; items = all.map(x => ({ title: x.title, due: x.due, list: x.list })); }
+      if (!items.length) return rr(`Nada pendente${it.list ? ` em ${title}` : ''}, ${a.short}. Raro, mas acontece.`);
+      const say = `${items.length === 1 ? 'Uma tarefa pendente' : `${items.length} tarefas pendentes`}${it.list ? ` em ${title}` : ''}${sub}, ${a.short}. ${items.slice(0, 4).map(x => x.title.replace(/[.;:!]+$/, '')).join('; ')}${items.length > 4 ? '; e mais algumas' : ''}.`;
+      return { topic: 'Tarefas', intro: '', chart: null, outro: '', remember: [], meta, slides: [{ title, layout: 'tarefas', tarefas: items.slice(0, 16), narration: say }] };
+    } catch (e) { return rr(`${e.message || 'O Google Tasks não respondeu agora.'}`); }
+  }
+  /* ---------- lembretes, alarmes e timers ---------- */
+  if (it.kind === 'reminder') {
+    const rr = t => ({ ...integrationReply(t, 'Lembretes'), meta: { provider: null, model: null, tier: 'local', degraded: false } });
+    if (it.op === 'listar') {
+      const l = reminders.list();
+      return rr(l.length ? `Você tem ${l.length}: ${l.slice(0, 5).map(x => `${x.kind === 'alarme' ? 'alarme' : x.kind === 'timer' ? x.text.toLowerCase() : x.text} ${reminders.when(x.at)}`).join('; ')}, ${a.short}.` : `Nenhum lembrete marcado, ${a.short}. Memória impecável, pelo visto.`);
+    }
+    if (it.op === 'cancelar') {
+      const gone = reminders.cancel(it.what, it.all);
+      return rr(gone.length ? `Cancelado, ${a.short}: ${gone.map(x => x.kind === 'alarme' ? 'o alarme' : x.text).join(', ')}.` : `Não achei esse lembrete, ${a.short}.`);
+    }
+    if (it.op === 'faltou_hora') return rr(`Para quando, ${a.short}? Diga, por exemplo, "${it.type === 'alarme' ? 'alarme às 7' : `me lembra de ${it.text || 'beber água'} às 15h`}" ou "daqui a 20 minutos".`);
+    const item = reminders.add({ kind: it.type, text: it.text, at: it.at });
+    const what = it.type === 'timer' ? it.text.toLowerCase() : it.type === 'alarme' ? 'alarme' : `lembrete de ${it.text}`;
+    return { ...rr(it.type === 'timer' ? `${it.text} começando agora, ${a.short}. Eu aviso quando acabar.` : `Anotado, ${a.short}: ${what} ${reminders.when(item.at)}. Eu aviso, mesmo com o app minimizado.`), reminder: item };
+  }
+  /* ---------- controle do PC ---------- */
+  if (it.kind === 'pc') {
+    const rr = t => ({ ...integrationReply(t, 'PC'), meta: { provider: null, model: null, tier: 'local', degraded: false } });
+    try {
+      if (it.op === 'volume') {
+        if (it.arg === 'get') { const v = await pcctl.volume(); return rr(v.muted ? `Está no mudo, ${a.short} (volume em ${v.volume}%).` : `Volume em ${v.volume}%, ${a.short}.`); }
+        const v = typeof it.arg === 'number' ? await pcctl.setVolume(it.arg) : await pcctl.changeVolume(it.arg === 'up' ? 10 : -10);
+        return rr(`Volume em ${v}%, ${a.short}.`);
+      }
+      if (it.op === 'mute') { await pcctl.mute(it.arg); return rr(it.arg ? `Mudo, ${a.short}. Silêncio, enfim.` : `Som de volta, ${a.short}.`); }
+      if (it.op === 'brightness') { const v = await pcctl.brightness(it.arg); return rr(`Brilho em ${v}%, ${a.short}.`); }
+      if (it.op === 'lock') { setTimeout(() => pcctl.lock().catch(() => {}), 1800); return rr(`Bloqueando a tela, ${a.short}. Volto quando o senhor voltar.`); }
+      if (it.op === 'battery') {
+        const b = await pcctl.battery();
+        return rr(!b ? `Este PC não tem bateria, ${a.short}: está ligado direto na tomada.` : `Bateria em ${b.pct}%${b.charging ? ', carregando' : b.minutes ? `, uns ${b.minutes >= 60 ? Math.floor(b.minutes / 60) + ' h e ' : ''}${b.minutes % 60} minutos de uso` : ''}, ${a.short}.`);
+      }
+      if (it.op === 'power') {
+        if (it.arg.op === 'cancelar') { await pcctl.power('cancelar'); return rr(`Cancelado, ${a.short}. O PC continua ligado.`); }
+        const pv = `${it.arg.op === 'reiniciar' ? 'Reiniciar' : 'Desligar'} o PC ${it.arg.minutes ? `em ${it.arg.minutes} minuto${it.arg.minutes > 1 ? 's' : ''}` : 'agora'}`;
+        const action = actions.createAction('pc_power', { op: it.arg.op, minutes: it.arg.minutes }, pv);
+        lastPending = { id: action.id, at: Date.now() };
+        return { ...rr(`${pv}? Confirme dizendo "confirmo", ${a.short}, ou toque em Confirmar.`), action };
+      }
+    } catch (e) { return rr(e.message || 'O Windows não deixou.'); }
+  }
+  /* ---------- câmbio e cripto ---------- */
+  if (it.kind === 'money') {
+    const meta = { provider: null, model: null, tier: 'local', degraded: false };
+    const isC = c => money.COINS[c]?.crypto, topicOf = codes => codes.every(isC) ? 'Cripto' : 'Câmbio';
+    try {
+      if (it.op === 'converter') {
+        const [q] = await money.quotes([it.code]);
+        const out = it.toForeign ? it.amount / q.bid : it.amount * q.bid;
+        const say = it.toForeign ? `${it.amount.toLocaleString('pt-BR')} reais dão ${out.toLocaleString('pt-BR', { maximumFractionDigits: isC(it.code) ? 6 : 2 })} em ${q.name.toLowerCase()}, ${a.short}.`
+          : `${it.amount.toLocaleString('pt-BR')} ${money.unitName(it.code, it.amount)} dão ${money.brl(out, false)}, ${a.short}. Cotação de ${money.brl(q.bid, isC(it.code))}.`;
+        return { ...integrationReply(say, topicOf([it.code])), chart: { type: 'bignumber', title: `${it.amount.toLocaleString('pt-BR')} ${it.toForeign ? 'reais' : q.name}`, unit: it.toForeign ? q.code : 'R$', data: [{ label: it.toForeign ? q.name : 'em reais', value: Math.round(out * 100) / 100 }] }, meta };
+      }
+      const qs = await money.quotes(it.codes);
+      if (!qs.length) throw new Error('sem cotação');
+      const up = x => `${x.pct >= 0 ? 'subiu' : 'caiu'} ${Math.abs(x.pct).toFixed(1).replace('.', ',')}%`;
+      if (qs.length === 1) {
+        const q = qs[0], c = isC(q.code), hist = await money.history(q.code, 7).catch(() => []);
+        const round = v => c ? Math.round(v) : Math.round(v * 100) / 100;
+        const slide = { title: `${q.name} hoje`, fact: `${money.brl(q.bid, c)} · ${q.pct >= 0 ? '+' : ''}${q.pct.toFixed(2).replace('.', ',')}% hoje · máxima ${money.brl(q.high, c)} · mínima ${money.brl(q.low, c)}`,
+          chart: hist.length > 2 ? { type: 'line', title: 'Últimos 7 dias', unit: 'R$', data: hist.map(d => ({ label: new Date(d.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), value: round(d.v) })), note: 'AwesomeAPI' }
+            : { type: 'bignumber', title: q.name, unit: 'R$', data: [{ label: 'agora', value: round(q.bid) }] },
+          narration: `O ${q.name.toLowerCase()} está em ${money.spoken(q.bid, c)}, ${a.short}. Hoje ${up(q)}.${hist.length > 2 ? ` Na semana, ${hist.at(-1).v >= hist[0].v ? 'subiu' : 'caiu'} de ${money.spoken(hist[0].v, c)} para ${money.spoken(hist.at(-1).v, c)}.` : ''}` };
+        return { topic: topicOf([q.code]), intro: '', chart: null, slides: [slide], outro: '', remember: [], meta };
+      }
+      const slide = { title: topicOf(it.codes) === 'Cripto' ? 'Criptomoedas agora' : 'Cotações agora', layout: 'cartoes',
+        items: qs.map(q => ({ title: q.name, value: money.brl(q.bid, isC(q.code)), text: `${q.pct >= 0 ? '▲' : '▼'} ${Math.abs(q.pct).toFixed(2).replace('.', ',')}% hoje` })),
+        narration: qs.map(q => `${q.name}, ${money.spoken(q.bid, isC(q.code))}; ${up(q)}`).join('. ') + `, ${a.short}.` };
+      return { topic: topicOf(it.codes), intro: '', chart: null, slides: [slide], outro: '', remember: [], meta };
+    } catch { return { ...integrationReply(`As cotações não responderam agora, ${a.short}. Tente em instantes.`, 'Câmbio'), meta }; }
+  }
+  /* ---------- futebol ---------- */
+  if (it.kind === 'futebol') {
+    const meta = { provider: null, model: null, tier: 'local', degraded: false };
+    const logo = (url, name) => { const x = url && images.registerUrl(url, { title: name }); return x ? `/api/images/${x.id}/file` : ''; };
+    try {
+      if (it.tabela) {
+        const lg = it.serieB ? 'bra.2' : 'bra.1', tb = await football.table(lg);
+        if (!tb.length) throw new Error('sem tabela');
+        const rows = tb.map(x => ({ ...x, logo: logo(x.logo, x.team) })), top = tb.slice(0, 3), z = tb.slice(-4);
+        return { topic: 'Futebol', intro: '', chart: null, outro: '', remember: [], meta,
+          slides: [{ title: football.leagueName(lg), layout: 'tabela', tabela: rows, narration: `Na ponta, ${top[0].team} com ${top[0].pts} pontos, seguido de ${top[1].team}, com ${top[1].pts}, e ${top[2].team}, com ${top[2].pts}. Na zona de rebaixamento: ${z.map(x => x.team).join(', ')}, ${a.short}.` }] };
+      }
+      const team = await football.findTeam(it.text);
+      if (!team) return null;   // não citou um time conhecido: segue para a conversa normal
+      const info = await football.teamInfo(team), m = info.live || info.last;
+      if (!m) throw new Error('sem jogos');
+      const mine = m.home.id === team.id ? 'home' : 'away', other = mine === 'home' ? 'away' : 'home';
+      const g1 = Number(m[mine].score), g2 = Number(m[other].score);
+      const res = m.live ? `está ${g1 > g2 ? 'vencendo' : g1 < g2 ? 'perdendo' : 'empatando'} com o ${m[other].name}: ${g1} a ${g2}, ${m.label.toLowerCase()}`
+        : `${g1 > g2 ? 'venceu' : g1 < g2 ? 'perdeu para' : 'empatou com'} o ${m[other].name} por ${Math.max(g1, g2)} a ${Math.min(g1, g2)}, ${football.when(m.date).split(' às ')[0]}, ${mine === 'home' ? 'em casa' : 'fora de casa'}`;
+      const nx = info.next, nxt = nx ? ` O próximo jogo é contra o ${nx.home.id === team.id ? nx.away.name : nx.home.name}, ${football.when(nx.date)}, ${nx.home.id === team.id ? 'em casa' : 'fora'}.` : '';
+      const pack = s => ({ name: s.name, abbr: s.abbr, score: s.score, logo: logo(s.logo, s.name) });
+      const recent = info.recent.map(x => { const me = x.home.id === team.id ? 'home' : 'away', o = me === 'home' ? 'away' : 'home', a1 = Number(x[me].score), b1 = Number(x[o].score); return a1 > b1 ? 'V' : a1 < b1 ? 'D' : 'E'; });
+      const slide = { title: `${m.home.name} x ${m.away.name}`, layout: 'placar', placar: { home: pack(m.home), away: pack(m.away), status: m.live ? m.label : 'Encerrado', live: !!m.live, when: football.when(m.date), comp: info.league, recent, team: team.short,
+          next: nx ? { vs: nx.home.id === team.id ? nx.away.name : nx.home.name, logo: logo(nx.home.id === team.id ? nx.away.logo : nx.home.logo, 'adversário'), when: football.when(nx.date), home: nx.home.id === team.id } : null },
+        narration: `O ${team.short} ${res}.${nxt}` };
+      return { topic: 'Futebol', intro: '', chart: null, slides: [slide], outro: '', remember: [], meta };
+    } catch { return { ...integrationReply(`Os placares não responderam agora, ${a.short}. Tente em instantes.`, 'Futebol'), meta }; }
+  }
+  if (it.kind === 'spotify') {
+    if (!spotify.connected()) return null;
+    const sp = (t) => ({ ...integrationReply(t, 'Spotify'), meta: { provider: null, model: null, tier: 'local', degraded: false } });
+    try {
+      if (it.op === 'now') {
+        const n = await spotify.nowPlaying();
+        return sp(n ? `${n.playing ? 'Tocando' : 'Pausado em'} ${n.name}${n.artist ? `, de ${n.artist}` : ''}, ${a.short}.${n.playing ? '' : ' Diga "continua" para voltar.'}` : `Nada tocando no Spotify agora, ${a.short}. Um silêncio digno.`);
+      }
+      const v = await spotify.control(it.op, it.arg);
+      const SAY = { next: `Próxima, ${a.short}.`, prev: `Voltando uma, ${a.short}.`, pause: `Pausado, ${a.short}.`, resume: `De volta à música, ${a.short}.`, shuffle: `Aleatório ligado, ${a.short}.`, volume: `Volume em ${v}%, ${a.short}.` };
+      return sp(SAY[it.op] || `Feito, ${a.short}.`);
+    } catch (e) { return sp(`${e.message || 'O Spotify não respondeu.'} ${e.code === 404 ? 'Abra o Spotify e tente de novo, ' + a.short + '.' : ''}`.trim()); }
+  }
+  // Notícias em formato de jornal: modelo pronto (montagem, capa e uma página por notícia), sem esperar a IA.
+  // A foto de cada notícia vem do Bing Notícias (a miniatura da própria matéria), em paralelo e com limite de tempo.
+  if (it.kind === 'news') {
+    try {
+      const n = await withTimeout(it.topic ? searchNews(p, it.topic) : headlines(p), 7000);
+      const deck = jornalDeck(n, a);
+      const cut = (pr, ms) => Promise.race([pr, new Promise(res => setTimeout(() => res(null), ms))]);
+      await Promise.all(deck.slides.filter(s => s.image).map(async s => {
+        try { const url = await cut(newsImage(s.image, p?.lang), 5000); const it = url && images.registerUrl(url, { title: s.title, source: s.jornal?.source });
+          if (it) { s.img = { query: s.image, provider: 'bing', items: [it] }; images.getThumb?.(it.id)?.catch?.(() => {}); } } catch { /* sem foto */ }
+      }));
+      return { ...deck, meta: { provider: null, model: null, tier: 'local', degraded: false } };
+    } catch { return r(`As agências de notícias não responderam agora, ${a.short}. Tente de novo em instantes.`, 'Jornal'); }
+  }
   if (it.kind === 'images') {
     try {
       const res = await images.searchImages(it.query, { count: 12 });
@@ -290,10 +520,11 @@ async function handleIntent(it, p, screen, text = '') {
     const pend = lastPending && Date.now() - lastPending.at < 120_000 && actions.getAction(lastPending.id) ? lastPending.id : null;
     if (!pend) return null; // sem ação pendente: segue a conversa normal
     lastPending = null;
-    const pendKind = actions.getAction(pend)?.kind, topic = pendKind === 'calendar_create' ? 'Agenda' : pendKind === 'files_trash' ? 'Arquivos' : 'Lixeira';
+    const pendKind = actions.getAction(pend)?.kind, topic = pendKind === 'calendar_create' ? 'Agenda' : pendKind === 'files_trash' ? 'Arquivos' : pendKind === 'pc_power' ? 'PC' : 'Lixeira';
     if (it.kind === 'cancel') { actions.clearAction(pend); return { ...r(`Cancelado, ${a.short}. Nada foi alterado.`, topic), cancelled: true }; }
     try {
       const out = await confirmAndRun(pend, 'voice');
+      if (out.power) return { ...r(`Combinado, ${a.short}: vou ${out.power.op} o PC ${out.power.minutes ? `em ${out.power.minutes} minuto${out.power.minutes > 1 ? 's' : ''}` : 'agora'}. Salve o que estiver aberto. Para desistir, diga "cancela o desligamento".`, 'PC'), ...out };
       if (out.event) return { ...r(`Marcado, ${a.short}: ${out.event.title}, ${calendar.whenSpeech(out.event.start, calendar.zoneOf(p))}.`, 'Agenda'), ...out };
       if (out.trashed) return { ...r(out.trashed.length ? `Feito, ${a.short}. Mandei ${out.trashed.length === 1 ? out.trashed[0] : `${out.trashed.length} itens`} para a Lixeira${out.skipped ? ` e pulei ${out.skipped}` : ''}. Dá para restaurar por lá.` : `Não consegui mandar nada para a Lixeira, ${a.short}.`, 'Arquivos'), ...out };
       return { ...r(`Feito, ${a.short}. Movi ${out.moved.length} e-mail${out.moved.length === 1 ? '' : 's'} para a lixeira${out.skipped?.length ? ` e pulei ${out.skipped.length}` : ''}. Diga "desfaz" para voltar atrás.`, 'Lixeira'), ...out };
@@ -627,7 +858,8 @@ async function chatReply(b) {
     }
   }
   if (b.mode === 'code' && !files.length) return await codeReply(b, p, screen);
-  return await chat(models, p, b.text, attachments.textBlock(files), { quick: b.wake === true, extra: projects.block(proj) });
+  const out = await chat(models, p, b.text, attachments.textBlock(files), { quick: b.wake === true, extra: projects.block(proj) });
+  return b.wake === true ? out : await withJornal(out, p, b.text);
 }
 
 /* ---------- Modo Code: especializado em ações no PC (pelo mascote quando ele está conectado) ----------
@@ -911,6 +1143,19 @@ async function playReply(pl, p, text) {
     return { ...r(url ? `Tocando ${pl.q} no YouTube, ${a.short}.` : `Não achei o vídeo exato, ${a.short}. Abri a busca por ${pl.q} no YouTube.`), opened: { type: 'url', label: o.label, url: o.url } };
   }
   noteOpened({ key: 'spotify', label: 'o Spotify' });
+  if (spotify.connected() && spotify.status().premium) {
+    const openApp = async () => {
+      if (mascot.canOpen('spotify')) { const id = mascot.action({ acao: 'abrir_app', alvo: 'spotify' }, 'o Spotify'); await mascot.waitResult(id, 20_000).catch(() => {}); }
+      else await launcher.openTarget({ type: 'app', key: 'spotify', label: 'o Spotify' }).catch(() => {});
+    };
+    try {
+      const out = await spotify.play(pl.q, openApp);
+      return { ...r(`Tocando ${out.label} no Spotify, ${a.short}.`), opened: { type: 'app', label: 'o Spotify' } };
+    } catch (e) {
+      if (e.code !== 403) return r(`${e.message} ${e.code === 404 ? 'Abra o Spotify e peça de novo, ' + a.short + '.' : ''}`.trim());
+      // 403: sem Premium; segue o caminho antigo
+    }
+  }
   // O play em si: o Jarvis Code traz o Spotify para a frente (atrás de outra janela ele não vê), a busca abre, e ele olha a
   // tela e clica no play do melhor resultado (o Spotify não tem "tocar isto" sem login na API dele).
   if (mascot.canClick() && !taskBusy) {
@@ -1342,6 +1587,15 @@ async function route(req, res, u) {
   if (M === 'POST' && url === '/auth/google/disconnect') { await google.disconnect(); clearTriageCache(); return send(res, 200, integrations()); }
 
   // Canva (estrutura pronta; redirect em 127.0.0.1, exigência do Canva)
+  if (M === 'GET' && url === '/auth/spotify') {
+    if (!spotify.configured()) return redirect(res, '/app?spotify=config');
+    return redirect(res, spotify.authRedirect());
+  }
+  if (M === 'GET' && url === '/auth/spotify/callback') {
+    try { await spotify.callback(u.searchParams); return redirect(res, `http://localhost:${PORT}/app?spotify=ok`); }
+    catch (e) { log.warn('[spotify] login falhou:', e.message); return redirect(res, `http://localhost:${PORT}/app?spotify=erro`); }
+  }
+  if (M === 'POST' && url === '/auth/spotify/disconnect') { spotify.disconnect(); return send(res, 200, integrations()); }
   if (M === 'GET' && url === '/auth/canva') {
     if (!canva.canvaConfigured()) return redirect(res, '/app?canva=config');
     return redirect(res, canva.canvaAuthRedirect());

@@ -69,8 +69,8 @@ export async function tts(raw, prefs = {}) {
   // A voz é fixa (reserva: o Antonio, brasileiro): não há mais escolha de voz nem de provedor nos ajustes.
   const provider = prefs.provider === 'elevenlabs' ? 'elevenlabs' : 'edge', lang = prefs.lang || 'pt-BR';
   // Ritmo normal de conversa (antes -6%: ficava arrastado). "ms" deixa a página medir a velocidade e juntar as frases.
-  const edge = () => { const t0 = Date.now(); return edgeTTS(text, { voice: defaultVoice(lang), rate: '+4%', pitch: '-6Hz', lang }).then(r => ({ ...r, ms: Date.now() - t0 }))
-    .catch(e => { throw Object.assign(new HttpError(502, `Voz da Microsoft indisponível: ${e.message}`), { browser: true }); }); };
+  const edge = () => { const t0 = Date.now(); return edgeTTS(text, { voice: defaultVoice(lang), rate: '+14%', pitch: '-2Hz', lang }).then(r => ({ ...r, ms: Date.now() - t0 }))
+    .catch(e => { throw Object.assign(new HttpError(502, `Voz indisponível agora: ${e.message}`), { browser: true }); }); };
   // Voz própria do JARVIS no VoiceStudio (local), quando configurada; a Microsoft fica de reserva.
   if (vsReady()) {
     try { return await vsTTS(text, { lang }); }

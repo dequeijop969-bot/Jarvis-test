@@ -7,6 +7,13 @@ export const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 export const MODIFY_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'; // só para mover à lixeira (confira na documentação)
 export const CAL_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
 export const CAL_WRITE_SCOPE = 'https://www.googleapis.com/auth/calendar.events'; // só para criar compromissos, depois de confirmação
+// Drive: procurar seus arquivos (somente leitura) e salvar no Drive o que o Jarvis cria (só os arquivos que ele mesmo criou).
+export const DRIVE_READ_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+export const TASKS_SCOPE = 'https://www.googleapis.com/auth/tasks';
+export const canDrive = () => grantedScopes().includes(DRIVE_READ_SCOPE);
+export const canDriveSave = () => grantedScopes().includes(DRIVE_FILE_SCOPE);
+export const canTasks = () => grantedScopes().includes(TASKS_SCOPE);
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
 export const grantedScopes = () => String(getTokens('google')?.scope || '').split(' ').filter(Boolean);
 export const canTrash = () => grantedScopes().includes(MODIFY_SCOPE);
@@ -38,7 +45,7 @@ export function authRedirect() {
   if (DEMO) return `/auth/google/callback?state=${state}&code=demo`;
   const u = new URL(AUTH_URL);
   u.search = new URLSearchParams({
-    client_id: c.id, redirect_uri: c.redirect, response_type: 'code', scope: `${MODIFY_SCOPE} ${CAL_SCOPE} ${CAL_WRITE_SCOPE}`, include_granted_scopes: 'true',
+    client_id: c.id, redirect_uri: c.redirect, response_type: 'code', scope: `${MODIFY_SCOPE} ${DRIVE_READ_SCOPE} ${DRIVE_FILE_SCOPE} ${TASKS_SCOPE}`, include_granted_scopes: 'true',
     access_type: 'offline', prompt: 'consent', state, code_challenge: challenge, code_challenge_method: 'S256'
   });
   return u.toString();
@@ -201,4 +208,17 @@ export async function createCalendarEvent({ title, start, end, tz }) {
   if (!r.ok) throw Object.assign(new Error('O Google Agenda não aceitou o compromisso.'), { code: 502 });
   const j = await r.json().catch(() => ({}));
   return { id: String(j.id || ''), link: /^https:\/\//.test(j.htmlLink || '') ? j.htmlLink : null, title, start, end };
+}
+
+// Chamada genérica às APIs do Google (Drive, Tasks...) com o mesmo login, renovando o acesso quando vence.
+export async function gfetch(url, { method = 'GET', body, headers = {}, raw = false } = {}) {
+  const tok = await accessToken();
+  const r = await fetch(url, { method, headers: { authorization: `Bearer ${tok}`, ...(body && !raw ? { 'content-type': 'application/json' } : {}), ...headers },
+    body: body == null ? undefined : raw ? body : JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+  if (r.status === 401) throw Object.assign(new Error('O Google recusou o acesso. Conecte de novo em Ajustes.'), { code: 409 });
+  if (r.status === 403) throw Object.assign(new Error('Falta permissão no Google para isso. Reconecte em Ajustes marcando todas as caixas.'), { code: 403 });
+  if (r.status === 204) return null;
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw Object.assign(new Error(r.status === 429 ? 'O Google pediu um tempo. Tente em instantes.' : `O Google respondeu com erro (${r.status}).`), { code: 502 });
+  return j;
 }

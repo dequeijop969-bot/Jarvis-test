@@ -101,7 +101,7 @@ export function uiAttach(req, res, headers = {}) {
 // jogo: a partida começou ou acabou (a página consulta /api/game); acordar: chamado por "Jarvis";
 // arquivo: solto no V do Jarvis Desktop (a página põe na fila do próximo pedido); fimv: o V sumiu.
 export function uiEmit(type, data = {}) {
-  if (!['falar', 'parar', 'jogo', 'acordar', 'arquivo', 'fimv', 'correio'].includes(type)) return 0;
+  if (!['falar', 'parar', 'jogo', 'acordar', 'arquivo', 'fimv', 'correio', 'lembrete'].includes(type)) return 0;
   const json = JSON.stringify(data || {});
   for (const c of uiClients) { try { c.res.write(`event: ${type}\ndata: ${json}\n\n`); } catch { /* o 'close' limpa */ } }
   return uiClients.size;

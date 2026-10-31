@@ -6,6 +6,11 @@ import { generate } from './router.js';
 import * as memory from './memory.js';
 import * as codectx from './codectx.js';
 import { parseOpen } from './launcher.js';
+import * as reminders from './reminders.js';
+import * as money from './money.js';
+import * as pcctl from './pccontrol.js';
+import * as gdrive from './gdrive.js';
+import * as gtasks from './gtasks.js';
 
 const CHART_TYPES = new Set(['bars', 'line', 'donut', 'ranking', 'compare', 'timeline', 'bignumber', 'concept']);
 const NUMERIC = new Set(['bars', 'line', 'donut', 'ranking', 'compare', 'bignumber']);
@@ -75,15 +80,26 @@ function cleanGlass(s, out) {
   return out;
 }
 
+// Plano B quando nem o conserto salva o JSON: fala só a "intro" (se der para pescar) e nunca o JSON cru com chaves e "value".
+export function spokenFallback(text) {
+  const t = String(text || '');
+  if (/^\s*[{[]|"\w+"\s*:/.test(t)) {
+    const m = t.match(/"intro"\s*:\s*"((?:[^"\\]|\\.)*)/);
+    const intro = m ? m[1].replace(/\\n/g, ' ').replace(/\\(.)/g, '$1').trim() : '';
+    return str(intro, 400) || 'Perdi o fio da meada no meio do raciocínio. Pode pedir de novo?';
+  }
+  return str(t.replace(/[{}[\]"\x60*#]/g, ' ').replace(/\s+/g, ' '), 400) || 'Perdi o fio da meada. Pode repetir?';
+}
+
 export function cleanReply(d) {
   if (!d || typeof d !== 'object') throw new Error('resposta inválida');
   const slides = (Array.isArray(d.slides) ? d.slides : []).slice(0, 8).map(s => ({
     title: str(s?.title, 60), fact: str(s?.fact, 140), narration: str(s?.narration, 600), chart: cleanChart(s?.chart),
-    image: str(s?.image, 80), points: (Array.isArray(s?.points) ? s.points : []).map(x => str(x, 90)).filter(Boolean).slice(0, 4)
+    image: str(s?.image, 80), orbe: ['cima', 'baixo', 'esquerda', 'direita'].includes(s?.orbe) ? s.orbe : '', points: (Array.isArray(s?.points) ? s.points : []).map(x => str(x, 90)).filter(Boolean).slice(0, 4)
   })).map((x, i) => cleanGlass(d.slides[i], x)).filter(s => s.narration);
   const out = { topic: str(d.topic, 40), intro: str(d.intro, 400), chart: cleanChart(d.chart), slides, outro: str(d.outro, 200),
     remember: (Array.isArray(d.remember) ? d.remember : []).map(x => str(x, 140)).filter(Boolean).slice(0, 2),
-    image_search: str(d.image_search, 100), sugerir_code: d.sugerir_code === true };
+    image_search: str(d.image_search, 100), sugerir_code: d.sugerir_code === true, jornal: str(d.jornal, 40) };
   if (!out.intro && !slides.length) throw new Error('resposta vazia');
   return out;
 }
@@ -124,7 +140,7 @@ export function systemPrompt(profile) {
   return `Você é ${ASSISTANT_NAME}, o assistente pessoal do usuário: um mordomo digital sofisticado, sereno e espirituoso, com ironia britânica seca. Tem opinião, confiança e senso de humor; é cúmplice do usuário, não um atendente cauteloso. ${a.rule} ${where}
 
 ${PERSONA}${about}
-Frases curtas e naturais para serem faladas em voz alta, em ${lang}, sem emojis, siglas soletradas ou símbolos no texto falado. Você conversa só por voz.
+Frases curtas e naturais para serem faladas em voz alta, em ${lang}, sem emojis, siglas soletradas ou símbolos no texto falado. Você conversa só por voz. Fale como alguém fala de verdade, não como quem lê um texto: frases que fluem uma na outra, ritmo variado (uma curta, outra um pouco maior), conectivos de conversa ("então", "aliás", "repare") e, em português do Brasil, "pra" e "tá" quando soar natural. Nada de listas ditas em voz alta.
 
 QUANDO MONTAR SLIDES
 - Conversa simples (cumprimento, pergunta curta): "slides": [] e uma "intro" de até 2 frases com a resposta. Se a resposta tiver um número que você conhece com segurança, pode incluir um "chart" do tipo "bignumber" no nível raiz.
@@ -144,6 +160,11 @@ Cada slide pode ter "layout" (sem layout = slide comum com gráfico). OBRIGATÓR
 - "proscontras": "pros" e "cons", de 1 a 4 itens curtos cada: decisões, escolhas, avaliações.
 - "galeria": "image" com um tema bem visual (o sistema mostra várias fotos) e "points" com até 3 legendas curtas.
 Num slide com "layout", use "chart": null. Mantenha "title", "fact" e "narration" como sempre.
+PALCO (opcional): cada slide pode ter "orbe": "cima", "baixo", "esquerda" ou "direita", o lugar onde o núcleo do Jarvis e a legenda ficam enquanto você narra. Varie entre os slides para apresentar melhor: gráfico ou foto de um lado, núcleo do outro; cartões e passos largos, núcleo em cima ou embaixo. Sem "orbe", o sistema escolhe.
+
+NOTÍCIAS AO VIVO (opcional)
+- Se o pedido é sobre um assunto ATUAL e muito comentado (pessoa em evidência, eleição, guerra, jogo ou campeonato, lançamento, acontecimento recente), preencha "jornal" com 1 a 3 palavras do assunto para buscar notícias (ex.: "Flávio Bolsonaro", "Copa do Mundo", "iPhone 17"). O sistema busca as manchetes reais de hoje e mostra em formato de jornal junto da sua resposta; não repita essas manchetes na narração.
+- Assunto atemporal (ciência, história antiga, receita, como fazer, conversa): "jornal": "".
 
 FONTES (links que o usuário pode abrir)
 - Em slides com fatos, números, história ou ciência, inclua "sources": até 3 [{"title":"nome curto da fonte","url":"https://..."}].
@@ -264,7 +285,7 @@ export async function chat(models, profile, userText, attach = '', { quick = fal
       ...(pdfs.length ? { pdfs } : {}), ...(images.length ? { images: images.map(m => m.data) } : {}) }],
     validate: cleanReply, cacheTtl: ctx.messages.length || attach || quick || many || extra ? 0 : 90_000, ...(many ? { timeout: 90_000 } : {})
   });
-  const reply = r.data || simple(str(r.text.replace(/[{}[\]"`*#]/g, ' ').replace(/\s+/g, ' '), 400) || 'Perdi o fio da meada. Pode repetir?');  const spoken = [reply.intro, ...reply.slides.map(s => `${s.title}: ${s.narration.slice(0, 120)}`), reply.outro].filter(Boolean).join(' | ');
+  const reply = r.data || simple(spokenFallback(r.text));  const spoken = [reply.intro, ...reply.slides.map(s => `${s.title}: ${s.narration.slice(0, 120)}`), reply.outro].filter(Boolean).join(' | ');
   if (web) { for (const sl of reply.slides) delete sl.image; reply.image_search = ''; reply.remember = []; }
   else {
     const needsCompact = memory.addExchange(text, spoken, reply.remember);
@@ -442,6 +463,40 @@ export function detectIntent(text, opts = {}) {
     // numa chamada só (sem perguntar antes à IA se deve olhar).
     || (opts.screenCan && (POINTS_AT_SCREEN.test(t) || GENERIC_SCREEN_Q.test(t))))
     return { kind: 'screen' };
+  // Lembretes, alarmes e timers; controle do PC; câmbio e cripto; futebol (o time é conferido no servidor).
+  const gd = gdrive.parse(text);
+  if (gd) return { ...gd, kind: 'drive' };
+  const gt = gtasks.parse(text);
+  if (gt) return { ...gt, kind: 'tasks' };
+  const rem = reminders.parse(text);
+  if (rem) return { ...rem, type: rem.kind, kind: 'reminder' };
+  const pc = pcctl.parse(text);
+  if (pc) return { kind: 'pc', ...pc };
+  const mo = money.parse(text);
+  if (mo) return { kind: 'money', ...mo };
+  if ((/\b(jogo|jogos|placar|resultado|partida|jogou|ganhou|perdeu|empatou|venceu|proximo jogo|tabela|classificacao|brasileirao|serie a|serie b|campeonato brasileiro|lider do)\b/.test(t)
+      || /\bquando (o|a) .{2,30} joga\b|\bjoga (hoje|amanha|quando|contra)\b/.test(t))
+      && !/^(jarvis |por favor )?(abre|abra|abrir|inicia|inicie|entra|entre|fecha|feche|executa|roda|instala|baixa)\b/.test(t)
+      && !/\b(jogar|joga (esse|isso|pra mim|o jogo)|video ?game|steam|baixa|instala)\b/.test(t)) return { kind: 'futebol', text: String(text).slice(0, 200), tabela: /\b(tabela|classificacao|lider)\b/.test(t), serieB: /\bserie b\b/.test(t) };
+  // Spotify (só vale com o Spotify conectado; senão o pedido segue o caminho normal): "o que está tocando", "pula essa",
+  // "volta a música", "pausa a música", "continua a música", "volume em 40", "aumenta a música".
+  if (/\b(o que (esta|ta) tocando|que musica (e|eh) essa|qual (e |eh )?(essa|a) musica|musica que (esta|ta) tocando)\b/.test(t)) return { kind: 'spotify', op: 'now' };
+  if (/^(jarvis )?(pula|pular|passa|passar|proxima|avanca)( essa| a musica| essa musica| pra proxima| musica)?$/.test(t) || /\bproxima musica\b/.test(t)) return { kind: 'spotify', op: 'next' };
+  if (/^(jarvis )?(volta|voltar)( a| pra)? (musica|anterior)( anterior)?$/.test(t) || /\bmusica anterior\b/.test(t)) return { kind: 'spotify', op: 'prev' };
+  if (/^(jarvis )?(pausa|pause|pausar|para|pare)( a| essa)? musica$/.test(t) || /^(jarvis )?pausa( o spotify| ai)?$/.test(t)) return { kind: 'spotify', op: 'pause' };
+  if (/^(jarvis )?(continua|continuar|despausa|retoma|volta a tocar|solta)( a musica| o spotify| ai)?$/.test(t)) return { kind: 'spotify', op: 'resume' };
+  const vol = t.match(/\bvolume( do spotify| da musica)( em| pra| para| no)? (\d{1,3})\b/);
+  if (vol) return { kind: 'spotify', op: 'volume', arg: Number(vol[3]) };
+  if (/\b(aumenta|sobe)( o volume)?( da| a)? musica\b/.test(t)) return { kind: 'spotify', op: 'volume', arg: 'up' };
+  if (/\b(abaixa|diminui|baixa)( o volume)?( da| a)? musica\b/.test(t)) return { kind: 'spotify', op: 'volume', arg: 'down' };
+  if (/\b(modo )?aleatorio\b.*\b(liga|ativa)\b|\b(liga|ativa)\b.*\baleatorio\b/.test(t)) return { kind: 'spotify', op: 'shuffle', arg: true };
+  // Notícias em formato de jornal: "quais as notícias", "manchetes de hoje", "notícias sobre a Copa".
+  const nw = t.match(/\b(noticias?|manchetes?|jornal)(?:\s+(?:de hoje|do dia|de agora|recentes|mais recentes|principais))?(?:\s+(?:sobre|de|do|da|dos|das|com)\s+(.+))?$/);
+  if (nw && (/^(jarvis |por favor )?(quais|qual|me|mostra|mostre|fala|traz|tem|ultimas|as|o|jornal|noticias|manchetes|apresenta|resume|liga|abre o jornal)/.test(t) || t === nw[0])) {
+    const topic = (nw[2] || '').replace(/\b(hoje|agora|por favor)\b/g, '').trim();
+    const orig = topic ? String(text).replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim().split(' ').slice(-topic.split(' ').length).join(' ') : '';
+    return { kind: 'news', topic: orig.replace(/^(a|o|as|os)\s+/i, '') };
+  }
   // Imagens: "pesquisa imagens de X", "me mostra fotos do X", "imagens de X no google".
   const img = imagesQuery(t);
   if (img) {

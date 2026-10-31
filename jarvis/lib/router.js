@@ -107,8 +107,33 @@ const CALL = { gemini2: callGemini, geminipago: callGemini, gemini: callGemini, 
 
 export function parseJSONLoose(t) {
   const a = t.indexOf('{'), b = t.lastIndexOf('}');
-  if (a < 0 || b < a) throw new Error('fora do formato');
-  return JSON.parse(t.slice(a, b + 1));
+  if (a < 0) throw new Error('fora do formato');
+  if (b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch {} }
+  return JSON.parse(repairJSON(t.slice(a)));
+}
+// Conserta os defeitos mais comuns do JSON que a IA devolve: bloco de código em volta, aspas curvas, quebra de linha
+// dentro de texto, vírgula sobrando antes de } ou ] e resposta cortada no meio (fecha o texto e as chaves abertas).
+export function repairJSON(s) {
+  s = String(s).replace(/\x60{3}(?:json)?/gi, '').replace(/[“”]/g, '"');
+  let out = '', inStr = false, esc = false; const stack = [];
+  for (const c of s) {
+    if (inStr) {
+      if (esc) { esc = false; out += c; continue; }
+      if (c === '\\') { esc = true; out += c; continue; }
+      if (c === '"') { inStr = false; out += c; continue; }
+      out += c === '\n' ? '\\n' : c === '\r' ? '' : c === '\t' ? ' ' : c; continue;
+    }
+    if (c === '"') { inStr = true; out += c; continue; }
+    if (c === '{' || c === '[') stack.push(c === '{' ? '}' : ']');
+    else if (c === '}' || c === ']') { if (stack.at(-1) === c) stack.pop(); else continue; }
+    out += c;
+    if (!stack.length) break;   // fechou o objeto de fora: o resto é sobra
+  }
+  if (esc) out = out.slice(0, -1);
+  if (inStr) out += '"';
+  out = out.replace(/[\s,:]+$/, '').replace(/,\s*"[^"]*"$/, '');   // chave solta sem valor no fim (resposta cortada)
+  while (stack.length) out += stack.pop();
+  return out.replace(/,(\s*[}\]])/g, '$1');
 }
 
 // Cache curto em memória para pedidos idênticos.
@@ -163,7 +188,7 @@ export async function generate(models, levelId, { system, messages, json = true,
   // Sem nível configurado: tenta o padrão antes da reserva.
   if (!level?.ok) { const d = models.levels[models.defaultLevel]; push(d?.primary, 'fallback'); (d?.fallback || []).forEach(f => push(f, 'fallback')); }
   const usable = chain.filter(t => getKey(t.provider) || cloudOk(t.provider));
-  if (!usable.length) throw new ProviderError('router', -1, 'Ainda não tenho como responder: entre com a sua conta JARVIS em Ajustes → Conexões (ou coloque uma chave do Gemini no .env).');
+  if (!usable.length) throw new ProviderError('router', -1, 'Ainda não tenho como responder: entre com a sua conta JARVIS em Ajustes → Conexões.');
 
   const ck = cacheTtl ? crypto.createHash('sha256').update(JSON.stringify([levelId, system, messages, json])).digest('hex') : null;
   if (ck) { const hit = cacheGet(ck); if (hit) return { ...hit, meta: { ...hit.meta, cached: true } }; }

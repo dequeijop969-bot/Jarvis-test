@@ -37,6 +37,10 @@ const ACTIONS_SCHEMA = {
     params: (p) => Array.isArray(p.paths) && p.paths.length > 0 && p.paths.length <= 30 && p.paths.every(x => typeof x === 'string' && x.length < 600) && Array.isArray(p.preview),
     risk: (p) => p.paths.length > 10 ? 'alto' : 'normal'
   },
+  'pc_power': {   // desligar ou reiniciar o PC (agendado pelo shutdown.exe; "cancela o desligamento" desfaz)
+    params: (p) => ['desligar', 'reiniciar'].includes(p.op) && Number.isFinite(p.minutes) && p.minutes >= 0 && p.minutes <= 1440,
+    risk: () => 'alto'
+  },
   'github_createbranch': {
     params: (p) => typeof p.repo === 'string' && typeof p.branch === 'string' && typeof p.from === 'string',
     risk: () => 'normal'

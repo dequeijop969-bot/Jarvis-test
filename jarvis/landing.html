@@ -391,16 +391,16 @@ document.querySelectorAll('.rv').forEach((el,i)=>{el.style.transitionDelay=`${(i
 const SR=!!(window.SpeechRecognition||window.webkitSpeechRecognition);
 function steps(st,health){
   const k=st?.integrations?.keys||{},g=st?.integrations?.gmail||{},img=st?.integrations?.images;
-  const ai=k.gemini?.configured||k.anthropic?.configured,aiName=[k.gemini?.configured&&'Gemini',k.anthropic?.configured&&'Anthropic'].filter(Boolean).join(' + ');
+  const ai=k.gemini?.configured||k.anthropic?.configured||!!st?.integrations?.conta?.on;
   return [
     {id:'srv',req:true,done:!!st,ic:'i-home',t:'Servidor rodando',s:st?'Conectado ao servidor local.':'Não encontrei o servidor.',
       bd:`<ol><li>Instale o <b>Node.js 20.6+</b>.</li><li>Na pasta do projeto, rode <code>npm start</code>.</li><li>Abra <code>http://localhost:3000</code> no Chrome ou no Edge.</li></ol><p>Sem chave nenhuma? <code>npm run demo</code> sobe tudo com serviços simulados.</p>`},
-    {id:'ai',req:true,done:!!ai,ic:'i-brain',t:'Chave de IA',s:ai?`Configurada: ${aiName}.`:'Falta uma chave do Gemini ou da Anthropic.',
-      bd:`<ol><li><b>Gemini</b>: aistudio.google.com, em “Get API key”. <b>Anthropic</b>: console.anthropic.com, em API Keys.</li><li>No app, abra <b>Ajustes</b>, cole a chave, toque em <b>Salvar</b> e depois em <b>Testar</b>.</li></ol>`,act:`<a class="btn sm pri" href="/app#integracoes">Abrir Ajustes</a>`},
+    {id:'ai',req:true,done:!!ai,ic:'i-brain',t:'Conta JARVIS',s:ai?'Pronto para responder.':'Entre com a sua conta JARVIS para o Jarvis responder.',
+      bd:`<ol><li>No app, abra <b>Ajustes → Conexões</b>.</li><li>Toque em <b>Entrar com a conta JARVIS</b> e use a mesma conta do site (Google ou e-mail).</li></ol>`,act:`<a class="btn sm pri" href="/app#integracoes">Abrir Ajustes</a>`},
     {id:'pf',req:false,done:st&&!st.needsProfile,ic:'i-user',t:'Seu perfil',s:st&&!st.needsProfile?`Olá, ${esc(st.profile?.name||'')}.${st.profile?.city?.name?' Cidade: '+esc(st.profile.city.name)+'.':''}`:'Nome, tratamento, cidade e idioma. Ele pergunta na primeira vez.',
       bd:`<p>Na primeira abertura o JARVIS pede quatro detalhes. A cidade define o clima, as notícias locais e o fuso da agenda.</p>`,act:`<a class="btn sm" href="/app">Preencher no app</a>`},
-    {id:'voz',req:false,done:!!st,ic:'i-voice',t:'Voz',s:k.elevenlabs?.configured?'ElevenLabs, com a voz neural da Microsoft de reserva.':'Voz neural gratuita da Microsoft (Antonio): sem chave e sem limite. ElevenLabs é opcional.',
-      bd:`<p>Já funciona sem configurar nada: a voz <b>Antonio</b> da Microsoft (a mesma da Leitura em voz alta do Edge) é natural e ilimitada. Troque a voz, a velocidade ou ouça uma amostra em <b>Ajustes → Voz</b>. Se quiser a ElevenLabs:</p><ol><li>elevenlabs.io → Developers → API Keys.</li><li>Na página da voz, use “Copy voice ID”.</li><li>Cole os dois em <b>Ajustes</b>. Dá para ter até 4 contas de reserva no <code>.env</code>.</li></ol>`,act:`<a class="btn sm" href="/app#integracoes">Configurar voz</a>`},
+    {id:'voz',req:false,done:!!st,ic:'i-voice',t:'Voz',s:'Voz neural em português, pronta para usar.',
+      bd:`<p>Já funciona sem configurar nada: a voz do Jarvis vem pronta, natural e sem limite de uso.</p>`},
     {id:'mic',req:false,done:SR,ic:'i-mic',t:'Navegador e microfone',s:SR?'Este navegador reconhece voz.':'Este navegador não reconhece voz. Use o Chrome ou o Edge.',
       bd:`<p>O reconhecimento de voz usa o recurso nativo do Chrome/Edge (precisa de internet). Se o microfone estiver bloqueado, libere no cadeado da barra de endereço.</p>`},
     {id:'g',req:false,done:g.state==='on',ic:'i-mail',t:'Gmail e Agenda (Google)',s:g.state==='on'?`Conectado${g.calendar?' com agenda':''}.`:g.configured?'Pronto para conectar.':'Opcional: precisa de um projeto no Google Cloud.',
