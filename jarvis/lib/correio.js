@@ -12,7 +12,7 @@ const box = [];   // mais nova primeiro
 let FILE = null;
 
 const kindOf = n => /\.pdf$/i.test(n) ? 'pdf' : /\.(png|jpe?g|gif|webp|bmp)$/i.test(n) ? 'image' : /\.(html?|css|m?js|jsx|tsx?|py|cs|java|c|cpp|h|go|rs|php|rb|lua|sh|ps1|bat|sql|json|xml|ya?ml|toml)$/i.test(n) ? 'code' : 'text';
-const MIME = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', html: 'text/html', htm: 'text/html', css: 'text/css', js: 'text/javascript', mjs: 'text/javascript', json: 'application/json', txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', xml: 'application/xml' };
+const MIME = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', html: 'text/html', htm: 'text/html', css: 'text/css', js: 'text/javascript', mjs: 'text/javascript', json: 'application/json', txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', xml: 'application/xml', zip: 'application/zip' };
 const mimeOf = n => MIME[String(n).split('.').pop().toLowerCase()] || 'application/octet-stream';
 const sizeOf = p => { try { return fs.statSync(p).size; } catch { return 0; } };
 
@@ -60,6 +60,8 @@ export function content(id) {
   return { buf: x.data, name: x.name, mime: mimeOf(x.name) };
 }
 export const pathOf = id => get(id)?.path || null;
+// O último arquivo que o Jarvis entregou, se foi há pouco (para "coloca as cores nele").
+export const lastMade = (ms = 20 * 60_000) => box.find(x => x.from === 'jarvis' && x.path && Date.now() - x.at < ms) || null;
 export function remove(id) { const i = box.findIndex(x => x.id === String(id)); if (i < 0) return false; box.splice(i, 1); save(); return true; }
 export function markSeen(id) { for (const x of box) if (!id || x.id === id) x.novo = false; save(); }
 

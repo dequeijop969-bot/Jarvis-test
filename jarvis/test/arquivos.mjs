@@ -9,18 +9,19 @@ import path from 'node:path';
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-arq-')), OUTDIR = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-arq-out-'));
 const PORT = 3000 + Math.floor(Math.random() * 900) + 50;
 Object.assign(process.env, { JARVIS_NO_LISTEN: '1', JARVIS_DATA_DIR: DIR, PORT: String(PORT), GEMINI_API_KEY: 'fakeGeminiKey-arquivos-1234' });
-for (const k of ['GEMINI_API_KEY_2', 'GEMINI_API_KEY_PAGO', 'ANTHROPIC_API_KEY']) delete process.env[k];
+for (const k of ['GEMINI_API_KEY_2', 'ANTHROPIC_API_KEY']) delete process.env[k];
+process.env.GEMINI_API_KEY_PAGO = 'fakePagoKey-arquivos-5678';   // a chave paga existe: mesmo assim, só é usada com o 5.1 selecionado
 
 // Gemini falso: guarda cada pedido e responde conforme o tipo (arquivo ou conversa).
 const asks = [];
-let plan = null;
+let plan = null, decision = null;   // decision: o que o classificador responde (null = resposta torta: a lista de palavras decide)
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opt = {}) => {
   if (!String(url).includes('generativelanguage.googleapis.com')) return realFetch(url, opt);
   const body = JSON.parse(opt.body), sys = body.systemInstruction?.parts?.[0]?.text || '';
   const last = body.contents.at(-1).parts;
-  asks.push({ sys, text: last[0].text, images: last.filter(p => p.inlineData?.mimeType === 'image/jpeg').length, pdfs: last.filter(p => p.inlineData?.mimeType === 'application/pdf').length });
-  const out = sys.includes('vai produzir um ARQUIVO') ? plan : { intro: 'Vi tudo, senhor.', slides: [], outro: '' };
+  asks.push({ model: decodeURIComponent(String(url).match(/models\/([^:]+):/)?.[1] || ''), sys, text: last[0].text, images: last.filter(p => p.inlineData?.mimeType === 'image/jpeg').length, pdfs: last.filter(p => p.inlineData?.mimeType === 'application/pdf').length });
+  const out = sys.includes('CLASSIFICADOR DE PEDIDOS') ? (decision || { nada: 1 }) : sys.includes('vai produzir um ARQUIVO') ? plan : { intro: 'Vi tudo, senhor.', slides: [], outro: '' };
   return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(out) }] } }] }), { status: 200, headers: { 'content-type': 'application/json' } });
 };
 
@@ -63,6 +64,9 @@ try {
   r = await post('/api/chat', { text: 'escreve um script python que soma as vendas', mode: 'code' });
   assert.ok(r.j.correio, 'script entregue no correio'); assert.ok(!r.j.written, 'não foi para o VS Code');
   assert.ok(fs.readdirSync(OUTDIR).some(n => n === 'contas.py'));
+  // O seletor manda: com 2.5 selecionado, nenhum arquivo vai para o modelo pago (mesmo com a chave dele).
+  const fileModels = asks.filter(x => x.sys.includes('vai produzir um ARQUIVO')).map(x => x.model);
+  assert.ok(fileModels.length >= 2 && fileModels.every(m => !/argon/.test(m)), fileModels.join());
 
   // 3. Projetos: anotar e listar (sem IA).
   const n0 = asks.length;
@@ -83,6 +87,23 @@ try {
   a = asks.at(-1);
   assert.match(a.sys, /pediu uma alteração/); assert.match(a.text, /ARQUIVO "galeria-padaria\.html"/, 'a galeria (citada) foi junto, não o script mais recente');
   assert.ok(r.j.correio); assert.match(r.j.correio.name, /-editado\.html$/);
+  // "Tá bom mas está sem as cores": sem anexo, logo depois da entrega (até no modo Code), o ajuste é no arquivo entregue.
+  plan = { formato: 'html', nome: 'x', titulo: 'Galeria', conteudo: '<!doctype html><h1 style="color:red">PADARIA</h1>', projeto: 'Padaria Pão Quente', nota: 'cores', fala: 'Cores aplicadas.' };
+  r = await post('/api/chat', { text: 'Tá bom mas está sem as cores coloca as cores', mode: 'code' });
+  a = asks.at(-1);
+  assert.match(a.sys, /pediu uma alteração/); assert.match(a.text, /galeria-padaria-editado\.html/);
+  assert.ok(r.j.correio, 'entregue no correio'); assert.ok(!r.j.written, 'não mexeu no projeto do VS Code');
+  // Pelo contexto (a IA decide), sem nenhuma palavra da lista: "ficou sem graça, capricha mais" = editar o último entregue.
+  decision = { acao: 'editar', arquivo: 'ultimo' };
+  r = await post('/api/chat', { text: 'ficou sem graça, capricha mais' });
+  const cls = asks.findLast(x => x.sys.includes('CLASSIFICADOR'));
+  assert.match(cls.text, /Último arquivo que o Jarvis entregou no correio: "galeria-padaria-editado/); assert.match(cls.text, /ficou sem graça/);
+  assert.match(asks.at(-1).sys, /pediu uma alteração/); assert.ok(r.j.correio, 'editado e entregue');
+  // A IA diz que é conversa: nada de arquivo, mesmo com "faz" e "pdf" na frase.
+  decision = { acao: 'conversa', arquivo: 'nenhum' };
+  r = await post('/api/chat', { text: 'você faz pdf de quantas páginas no máximo?' });
+  assert.ok(!r.j.correio, 'pergunta não vira arquivo'); assert.equal(r.j.intro, 'Vi tudo, senhor.');
+  decision = null;
 
   // 6. Ajustes > Projetos.
   const pj = (await get('/api/projects')).projects;
@@ -95,13 +116,16 @@ try {
 
   // 7. PDF: componentes com classe permitida, imagem só por anexo:N, nada de URL.
   const ph = fm.pdfHtml('Cardápio', '<div class="capa" onclick="x"><h1>Cardápio</h1></div><div class="cards evil"><div class="card"><img src="anexo:1"><h3>Pão</h3></div></div><img src="https://x/y.png"><figure><img src="anexo:2"></figure>', 'verde', [{ name: 'a', data: jpg(1) }]);
-  assert.match(ph, /<div class="capa"><h1>/); assert.match(ph, /<div class="cards">/); assert.ok(!/onclick|evil|https:\/\/x/.test(ph));
+  assert.match(ph, /<div class="capa"><h1>/); assert.match(ph, /<div class="cards evil">/, 'no PDF a IA usa classes dela'); assert.ok(!/onclick|https:\/\/x/.test(ph));
   assert.equal((ph.match(/src="data:image\/jpeg/g) || []).length, 1, 'anexo:1 embutido; anexo:2 não existe e sai');
   assert.match(ph, /--c1:#1f7a52/, 'tema verde');
   assert.equal(fm.detect('faz um resumo desse site pra mim', false), null, 'resumo de site é conversa');
   assert.equal(fm.detect('cria um site para a padaria', false), 'criar');
   assert.equal(fm.detect('escreve um script python que renomeia fotos', false), 'criar');
   assert.equal(fm.detect('faz um cardápio bonito com essas fotos', true), 'criar');
+  assert.equal(fm.detect('consegue refazer esse PDF', true), 'editar');
+  assert.equal(fm.isFollowUpEdit('coloca as cores'), true);
+  for (const t of ['coloca uma música', 'deixa o volume no máximo', 'manda um email pra ana']) assert.equal(fm.isFollowUpEdit(t), false, t);
   console.log('arquivos: todos os anexos, imagens no arquivo, só escrever e entregar, memória de projetos e PDF seguro ok');
 } finally {
   server.close(); globalThis.fetch = realFetch;

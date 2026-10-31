@@ -1787,6 +1787,13 @@ function showAction(a){
       if(x==='no'){try{await api('/api/actions/'+a.id+'/cancel')}catch{}closeSheet()}
       if(x==='yes'){e.target.disabled=true;try{await api('/api/actions/'+a.id+'/confirm',{via:'touch'});closeSheet();flash('Marcado na agenda.')}catch(er){closeSheet();flash(er.message||'Não consegui marcar o compromisso.')}}});
     return}
+  if(a.kind==='files_trash'){
+    const n=(a.preview||[]).length;
+    const d=sheet('<h3>Mandar '+n+' ite'+(n>1?'ns':'m')+' para a Lixeira?</h3><ul>'+(a.preview||[]).slice(0,12).map(x=>'<li><b>'+esc(x.name)+'</b> · '+esc(x.where)+'</li>').join('')+(n>12?'<li>… e mais '+(n-12)+'</li>':'')+'</ul><p>'+(n>10?'São mais de 10: confirme tocando no botão. ':'Você também pode dizer \"confirmo\". ')+'Dá para restaurar pela Lixeira do Windows.</p><div class="ctas"><button class="btn ghost" type="button" data-x="no">Cancelar</button><button class="btn pri" type="button" data-x="yes">Confirmar</button></div>');
+    d.addEventListener('click',async e=>{const x=e.target.dataset&&e.target.dataset.x;
+      if(x==='no'){try{await api('/api/actions/'+a.id+'/cancel')}catch{}closeSheet()}
+      if(x==='yes'){e.target.disabled=true;try{const r=await api('/api/actions/'+a.id+'/confirm',{via:'touch'});closeSheet();flash((r.trashed||[]).length?'Na Lixeira: '+r.trashed.length+' ite'+(r.trashed.length>1?'ns':'m')+'.':'Nada foi para a Lixeira.')}catch(er){closeSheet();flash(er.message||'Não consegui mandar para a Lixeira.')}}});
+    return}
   const n=(a.preview||[]).length,big=n>10;
   const d=sheet('<h3>Mover '+n+' e-mail'+(n>1?'s':'')+' para a lixeira?</h3><ul>'+(a.preview||[]).slice(0,12).map(x=>'<li><b>'+esc(x.from)+'</b> · '+esc(x.subject)+'</li>').join('')+(n>12?'<li>… e mais '+(n-12)+'</li>':'')+'</ul><p>'+(big?'São mais de 10: confirme tocando no botão. ':'')+'Dá para desfazer por 5 minutos. Nada é apagado de vez.</p><div class="ctas"><button class="btn ghost" type="button" data-x="no">Cancelar</button><button class="btn pri" type="button" data-x="yes">Confirmar</button></div>');
   d.addEventListener('click',async e=>{const x=e.target.dataset&&e.target.dataset.x;

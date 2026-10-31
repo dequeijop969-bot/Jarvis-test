@@ -54,7 +54,7 @@ export function cleanCode(text) {
 export async function writeCode(generate, models, level, { request, file }) {
   const lang = langOf(file);
   const r = await generate(models, models.levels.code ? 'code' : level, {
-    json: false, maxTokens: 8000,
+    json: false, maxTokens: 24000, timeout: 240_000,
     system: `Você escreve o conteúdo COMPLETO de um único arquivo ${lang} chamado ${path.basename(file)}, pronto para usar.\n` +
       'Responda SOMENTE com o conteúdo do arquivo: sem cercas ```, sem explicação antes ou depois.\n' +
       'Código limpo, indentado com 2 espaços, comentários curtos em português. Em HTML, um arquivo só (CSS e JS embutidos), bonito e responsivo.\n' +
@@ -125,7 +125,7 @@ export function backup(full) {
 export async function editCode(generate, models, level, { request, file, current, project = [] }) {
   if (current.length > MAX_CHARS) throw Object.assign(new Error('Esse arquivo é grande demais para eu reescrever de uma vez.'), { code: 413 });
   const r = await generate(models, models.levels.code ? 'code' : level, {
-    json: false, maxTokens: 16000,
+    json: false, maxTokens: 24000, timeout: 240_000,
     system: `Você está EDITANDO o arquivo ${langOf(file)} chamado ${path.basename(file)}, que você mesmo escreveu antes. Você recebe o conteúdo ATUAL e o pedido de mudança.\n` +
       'Devolva o arquivo COMPLETO já modificado, pronto para salvar por cima: sem cercas ```, sem explicação, sem "..." nem "resto igual".\n' +
       'Mantenha o tema, o conteúdo e tudo o que o pedido não mandou mudar (é o MESMO projeto, refinado, não um novo). Melhore só o que foi pedido; em "refina"/"melhora" genérico: visual, organização, responsividade e detalhes, mantendo os textos e as seções.\n' +

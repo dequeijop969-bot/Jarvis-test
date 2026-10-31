@@ -10,6 +10,7 @@ import * as skills from './lib/skills.js';
 import * as projects from './lib/projects.js';
 import * as conta from './lib/conta.js';
 import * as filemaker from './lib/filemaker.js';
+import * as intent from './lib/intent.js';
 import { spawn } from 'node:child_process';
 import { log, redact } from './lib/secrets.js';
 import * as keys from './lib/keys.js';
@@ -35,6 +36,7 @@ import * as users from './lib/users.js';
 import * as pkg from './lib/package.js';
 import * as speech from './lib/speech.js';
 import * as workspace from './lib/workspace.js';
+import * as devicefiles from './lib/devicefiles.js';
 import * as mcp from './lib/mcp.js';
 import * as gameplay from './lib/gameplay.js';
 import * as mood from './lib/mood.js';
@@ -114,6 +116,11 @@ async function executeAction({ kind, params }) {
     return { moved: r.moved, skipped: r.skipped, undoUntil: Date.now() + 5 * 60_000 };
   }
   if (kind === 'gmail_untrash') return google.untrashMessages(params.ids);
+  if (kind === 'files_trash') {   // confere de novo cada caminho (pode ter mudado nesses 2 minutos) e manda para a Lixeira
+    const ok = params.paths.flatMap(f => { try { return [devicefiles.checkAbs(f)]; } catch { return []; } }).filter(f => fs.existsSync(f));
+    const moved = ok.length ? await devicefiles.trash(ok) : [];
+    return { trashed: moved.map(f => path.basename(f)), skipped: params.paths.length - moved.length };
+  }
   if (kind === 'calendar_create') { const ev = await google.createCalendarEvent(params); calendar._clearCalendarCache(); return { event: { title: ev.title, start: ev.start, end: ev.end, link: ev.link } }; }
   if (kind === 'github_comment') return github.comment(params.repo, params.pr ?? params.issue, params.body);
   if (kind === 'github_labels') return github.addLabels(params.repo, params.pr ?? params.issue, params.labels);
@@ -283,11 +290,12 @@ async function handleIntent(it, p, screen, text = '') {
     const pend = lastPending && Date.now() - lastPending.at < 120_000 && actions.getAction(lastPending.id) ? lastPending.id : null;
     if (!pend) return null; // sem ação pendente: segue a conversa normal
     lastPending = null;
-    const pendKind = actions.getAction(pend)?.kind, topic = pendKind === 'calendar_create' ? 'Agenda' : 'Lixeira';
+    const pendKind = actions.getAction(pend)?.kind, topic = pendKind === 'calendar_create' ? 'Agenda' : pendKind === 'files_trash' ? 'Arquivos' : 'Lixeira';
     if (it.kind === 'cancel') { actions.clearAction(pend); return { ...r(`Cancelado, ${a.short}. Nada foi alterado.`, topic), cancelled: true }; }
     try {
       const out = await confirmAndRun(pend, 'voice');
       if (out.event) return { ...r(`Marcado, ${a.short}: ${out.event.title}, ${calendar.whenSpeech(out.event.start, calendar.zoneOf(p))}.`, 'Agenda'), ...out };
+      if (out.trashed) return { ...r(out.trashed.length ? `Feito, ${a.short}. Mandei ${out.trashed.length === 1 ? out.trashed[0] : `${out.trashed.length} itens`} para a Lixeira${out.skipped ? ` e pulei ${out.skipped}` : ''}. Dá para restaurar por lá.` : `Não consegui mandar nada para a Lixeira, ${a.short}.`, 'Arquivos'), ...out };
       return { ...r(`Feito, ${a.short}. Movi ${out.moved.length} e-mail${out.moved.length === 1 ? '' : 's'} para a lixeira${out.skipped?.length ? ` e pulei ${out.skipped.length}` : ''}. Diga "desfaz" para voltar atrás.`, 'Lixeira'), ...out };
     } catch (e) { lastPending = { id: pend, at: Date.now() }; return r(e.message || 'Não consegui executar.', topic); }
   }
@@ -544,11 +552,32 @@ async function chatReply(b) {
     const pf = projects.lastFile(proj, b.text);
     if (pf) try { const it = attachments.fromDisk(pf.path, pf.name); files = attachments.take([it.id]); } catch { /* sumiu do disco: segue sem */ }
   }
-  // "Cria um PDF de X e me manda" / "edita o PDF que eu mandei e me devolve" / "escreve um script python": o Jarvis só
-  // ESCREVE o arquivo e entrega no correio (nada é aberto nem rodado). No modo Code, o VS Code só entra se você pedir, ou
-  // se há uma pasta de projeto escolhida (Ajustes > Jarvis Code): aí o arquivo vai para a pasta, como antes.
-  const fk = filemaker.detect(b.text, files.length > 0);
-  const viaCode = b.mode === 'code' && (/\b(vs ?code|visual studio|no editor|digita|digitando|na pasta do projeto)\b/.test(fold(b.text)) || !!workspace.active());
+  // "Cria um PDF de X e me manda" / "edita o PDF que eu mandei e me devolve" / "tá bom, mas tá sem as cores": o Jarvis só
+  // ESCREVE o arquivo e entrega no correio (nada é aberto nem rodado). Com arquivo no contexto (anexo, um entregue há
+  // pouco, ou o modo Code), a IA decide pela conversa o que é: criar, editar qual, código do projeto ou conversa.
+  const lm = files.length ? null : correio.lastMade();
+  const useLast = () => { if (lm && !files.length) try { const it = attachments.fromDisk(lm.path, lm.name); files = attachments.take([it.id]); } catch { /* sumiu do disco: segue sem */ } };
+  const askedVs = b.mode === 'code' && /\b(vs ?code|visual studio|no editor|digita|digitando|na pasta do projeto)\b/.test(fold(b.text));
+  let fk = null, viaCode = false, decided = null;
+  // "Confirmo"/"cancela" com uma ação esperando: é resposta a ela, não pedido de arquivo.
+  const answering = lastPending && Date.now() - lastPending.at < 120_000 && ['confirm', 'cancel'].includes(detectIntent(b.text || '', {})?.kind);
+  if (!b._skill && !answering && intent.worth({ files: files.length, recent: lm, code: b.mode === 'code', device: intent.mentionsDevice(b.text) })) {
+    const { generate } = await import('./lib/router.js');
+    const ws = workspace.active();
+    decided = await intent.decide(generate, models, { text: b.text, history: memory.context().messages, files, recent: lm, mode: b.mode, workspace: ws ? path.basename(ws) : null }).catch(() => null);
+  }
+  if (decided) {
+    if (decided.acao === 'editar' && !(decided.arquivo === 'projeto' && b.mode === 'code')) { if (!files.length) useLast(); fk = files.length ? 'editar' : null; }
+    else if (decided.acao === 'editar' || decided.acao === 'codigo') { if (b.mode === 'code') viaCode = true; else fk = 'criar'; }
+    else if (decided.acao === 'criar') { if (decided.arquivo === 'ultimo') useLast(); fk = 'criar'; }   // "faz uma planilha com esses eventos": o último vai junto
+    if (askedVs) viaCode = true;
+  } else {
+    // Sem a IA (fora do ar): a lista de palavras decide, como antes.
+    if (!files.length && filemaker.isFollowUpEdit(b.text) && !filemaker.isCode(b.text)) { useLast(); if (files.length) fk = 'editar'; }
+    fk ||= filemaker.detect(b.text, files.length > 0);
+    viaCode = askedVs || (b.mode === 'code' && !!workspace.active() && filemaker.isCode(b.text));
+  }
+  if (decided?.acao === 'gerenciar' && !askedVs) return await manageTask(b, p);
   if (fk && !viaCode) return await fileTask(fk, b, p, files, proj);
   // Arquivos mandados: TODOS vão juntos (imagens, PDFs e textos), não só o primeiro.
   const pics = attachments.imagesOf(files), pdfs = attachments.pdfsOf(files);
@@ -938,11 +967,10 @@ async function runSkill(sk, b, p) {
   recordTurn(models, b.text, say, `Skill ${sk.name}`);
   return { ...(last || {}), intro: say, skill: { name: sk.name, passos: done } };
 }
-// Nível para escrever arquivos: o mais capaz (5.1) quando ele tem chave; senão, o que você escolheu. Documento é
-// caprichado de propósito: vale o modelo melhor, e é um pedido só (não a conversa inteira).
+// Nível para escrever arquivos: SEMPRE o que você escolheu no seletor. O modelo pago (5.1) só trabalha quando você o
+// seleciona; nada sobe de nível por conta própria.
 function fileLevel(p) {
-  const top = models.levels['5.1'];
-  return top?.ok && top.primary && keys.hasKey(top.primary.provider) ? '5.1' : (p?.level || models.defaultLevel);
+  return p?.level || models.defaultLevel;
 }
 async function fileTask(kind, b, p, files, proj = null) {
   const a = addressing(p), r = t => ({ ...integrationReply(t, 'Correio'), meta: { provider: null, model: null, tier: 'local', degraded: false } });
@@ -959,16 +987,71 @@ async function fileTask(kind, b, p, files, proj = null) {
     plan = res.data; meta = res.meta;
   } catch (e) { return r(`Não consegui escrever o arquivo agora, ${a.short}. ${e instanceof ProviderError ? friendlyAIError(e) : ''}`.trim()); }
   const src = files.find(x => x.kind === 'pdf' || x.kind === 'text');
+  // Editar um PDF devolve PDF (a IA às vezes responde em HTML), a não ser que você peça outro formato.
+  if (kind === 'editar' && src?.kind === 'pdf' && plan.formato === 'html' &&!/\b(html|txt|markdown|docx?|planilha|csv|json)\b/.test(fold(b.text))) plan.formato = 'pdf';
   if (kind === 'editar' && src) plan.nome = `${src.name.replace(/\.[^.]+$/, '').replace(/-editado( \(\d+\))?$/, '')}-editado.${plan.formato}`;   // nome do original + "-editado"
-  let file;
-  try { file = await filemaker.write(plan, images); } catch (e) { return r(`Escrevi o conteúdo, ${a.short}, mas não consegui gerar o arquivo. ${e.message}`); }
-  const item = correio.deliver({ from: 'jarvis', path: file, note: kind === 'editar' && src ? `editado de ${src.name}` : 'feito pelo Jarvis' });
+  let file, site = null;
+  try {
+    if (plan.formato === 'site') {
+      // Site com várias páginas: cada arquivo numa chamada própria; a pasta fica no lugar pedido e o .zip vai para o correio.
+      site = await filemaker.buildSite(generate, models, fileLevel(p), plan, { images, request: b.text, addressRule: a.rule });
+      file = site.zip;
+    } else file = await filemaker.write(plan, images);
+  } catch (e) { return r(`Escrevi o conteúdo, ${a.short}, mas não consegui gerar o arquivo. ${e instanceof ProviderError ? friendlyAIError(e) : e.message}`); }
+  const item = correio.deliver({ from: 'jarvis', path: file, note: kind === 'editar' && src ? `editado de ${src.name}` : site ? `site com ${site.files.length} arquivos` : 'feito pelo Jarvis' });
   correioOpen(item);
   // Memória do projeto: o arquivo e a decisão ficam guardados para as próximas conversas.
   const pj = projects.touch(plan.projeto || proj?.name || plan.titulo);
   if (pj) { projects.addFile(pj.id, { name: item.name, path: file, what: plan.nota || plan.titulo }); if (plan.nota) projects.addNote(pj.id, plan.nota); }
-  recordTurn(models, b.text, `Arquivo ${item.name} ${kind === 'editar' ? 'editado' : 'criado'} e entregue no correio${pj ? ` (projeto ${pj.name})` : ''}.`, 'Correio do Jarvis');
-  return { ...r(`${plan.fala ? plan.fala + ' ' : ''}${item.name} já está na sua caixa de correio, ${a.short}.`), correio: item, abrirCorreio: true, ...(pj ? { projeto: pj.name } : {}), meta: meta || r('').meta };
+  // Onde ficou no computador (fora a pasta padrão, que é sempre a mesma).
+  const where = site ? site.dir : path.dirname(file);
+  const placeSay = site ? `O site está na pasta ${devicefiles.pretty(where)}, e o .zip dele` : plan.destino ? `Salvei em ${devicefiles.pretty(where)}, e ele também` : '';
+  recordTurn(models, b.text, `${site ? `Site ${plan.nome} (${site.files.length} arquivos) criado em ${devicefiles.pretty(where)}` : `Arquivo ${item.name} ${kind === 'editar' ? 'editado' : 'criado'}${plan.destino ? ` em ${devicefiles.pretty(where)}` : ''}`} e entregue no correio${pj ? ` (projeto ${pj.name})` : ''}.`, 'Correio do Jarvis');
+  return { ...r(`${plan.fala ? plan.fala + ' ' : ''}${placeSay ? `${placeSay} já está na sua caixa de correio, ${a.short}.` : `${item.name} já está na sua caixa de correio, ${a.short}.`}`),
+    correio: item, abrirCorreio: true, salvoEm: where, ...(site ? { site: { pasta: site.dir, arquivos: site.files.length } } : {}), ...(pj ? { projeto: pj.name } : {}), meta: meta || r('').meta };
+}
+// Arquivos e pastas do computador: listar, criar pasta, mover/renomear (na hora) e Lixeira (só depois de confirmar).
+async function manageTask(b, p) {
+  const a = addressing(p), r = t => ({ ...integrationReply(t, 'Arquivos'), meta: { provider: null, model: null, tier: 'local', degraded: false } });
+  const { generate } = await import('./lib/router.js');
+  let plan;
+  try { plan = await devicefiles.planOps(generate, models, models.levels['2.5'] ? '2.5' : models.defaultLevel, { text: b.text, history: memory.context().messages, addressRule: a.rule }); }
+  catch (e) { return r(`Não consegui planejar isso agora, ${a.short}. ${e instanceof ProviderError ? friendlyAIError(e) : ''}`.trim()); }
+  const done = [], fails = [], listed = [], trash = [];
+  for (const op of plan.ops) {
+    try {
+      if (op.op === 'listar') {
+        const l = devicefiles.list(op.lugar, op.caminho, 40);
+        listed.push(`${devicefiles.pretty(l.full)} (${l.total} ${l.total === 1 ? 'item' : 'itens'}): ${l.items.map(i => i.dir ? `${i.name}/` : i.name).join(', ') || 'vazia'}${l.total > l.items.length ? ', …' : ''}`);
+      } else if (op.op === 'criar_pasta') {
+        const d = devicefiles.resolve(op.lugar, op.caminho);
+        if (fs.existsSync(d.full)) fails.push(`a pasta ${devicefiles.pretty(d.full)} já existe`);
+        else { fs.mkdirSync(d.full, { recursive: true }); done.push(`criei a pasta ${devicefiles.pretty(d.full)}`); }
+      } else if (op.op === 'mover') {
+        const m = devicefiles.move(op.de, op.para);
+        done.push(path.dirname(m.de) === path.dirname(m.para) ? `renomeei ${path.basename(m.de)} para ${path.basename(m.para)}` : `movi ${path.basename(m.de)} para ${devicefiles.pretty(path.dirname(m.para))}`);
+      } else if (op.op === 'lixeira') {
+        const d = devicefiles.resolve(op.lugar, op.caminho);
+        if (!d.rel) throw Object.assign(new Error('não mando um lugar inteiro para a Lixeira'), { code: 400 });
+        if (!fs.existsSync(d.full)) throw Object.assign(new Error(`não achei ${d.rel}`), { code: 404 });
+        trash.push(d.full);
+      }
+    } catch (e) { fails.push(e.code ? e.message.replace(/\.$/, '') : `não consegui (${op.op})`); }
+  }
+  let action = null;
+  if (trash.length) {
+    const preview = trash.map(f => ({ name: path.basename(f), where: devicefiles.pretty(path.dirname(f)) }));
+    action = actions.createAction('files_trash', { paths: trash, preview }, preview);
+    lastPending = { id: action.id, at: Date.now() };
+  }
+  const say = [plan.fala,
+    done.length ? `Feito: ${done.join('; ')}.` : '',
+    listed.length ? listed.join(' | ') : '',
+    trash.length ? `Posso mandar ${trash.length === 1 ? `${path.basename(trash[0])}` : `${trash.length} itens`} para a Lixeira. ${trash.length > 10 ? 'Toque em Confirmar' : 'Diga "confirmo" ou toque em Confirmar'}; dá para restaurar pela Lixeira do Windows.` : '',
+    fails.length ? `Não deu: ${fails.join('; ')}.` : '',
+    !plan.ops.length && !plan.fala ? `Não entendi o que fazer com os arquivos, ${a.short}. Diga, por exemplo, "cria uma pasta Contas na área de trabalho".` : ''].filter(Boolean).join(' ');
+  recordTurn(models, b.text, say.slice(0, 600), 'Arquivos');
+  return { ...r(say), ...(action ? { action } : {}), arquivos: { feitos: done.length, falhas: fails.length } };
 }
 // "Anota no projeto X: ..." e "quais projetos você lembra?": sem IA, direto na memória.
 function projectCommand(pc, b, p) {
@@ -1017,7 +1100,7 @@ async function codeEdit(pick, p, text, a, r, generate) {
   }
   let current, code;
   try { current = await readFile(full, 'utf8'); } catch { return r(`Não consegui ler ${name}, ${a.short}.`); }
-  try { code = await codewriter.editCode(generate, models, p?.level || models.defaultLevel, { request: `${text}${pick.pedido ? `\n\nDetalhes: ${String(pick.pedido).slice(0, 800)}` : ''}`, file: full, current }); }
+  try { code = await codewriter.editCode(generate, models, fileLevel(p), { request: `${text}${pick.pedido ? `\n\nDetalhes: ${String(pick.pedido).slice(0, 800)}` : ''}`, file: full, current }); }
   catch (e) { return r(`Não consegui editar ${name} agora, ${a.short}. ${e instanceof ProviderError ? friendlyAIError(e) : e.code ? e.message : 'Tente de novo em instantes.'}`); }
   let saved;
   let typing = false;
@@ -1036,7 +1119,7 @@ async function codeEditWs(rel, pick, p, text, a, r, generate) {
   let f, code;
   try { f = workspace.readExisting(rel); } catch (e) { return r(`${String(e.message).replace(/\.$/, '')}, ${a.short}.`); }
   const project = workspace.listTree(80).map(x => x.rel).filter(x => x !== f.rel);
-  try { code = await codewriter.editCode(generate, models, p?.level || models.defaultLevel, { request: `${text}${pick.pedido ? `\n\nDetalhes: ${String(pick.pedido).slice(0, 800)}` : ''}`, file: f.full, current: f.current, project }); }
+  try { code = await codewriter.editCode(generate, models, fileLevel(p), { request: `${text}${pick.pedido ? `\n\nDetalhes: ${String(pick.pedido).slice(0, 800)}` : ''}`, file: f.full, current: f.current, project }); }
   catch (e) { return r(`Não consegui editar ${f.rel} agora, ${a.short}. ${e instanceof ProviderError ? friendlyAIError(e) : e.code ? e.message : 'Tente de novo em instantes.'}`); }
   let saved;
   let typing = false;
@@ -1059,7 +1142,7 @@ async function codeWriteWs(pick, p, text, a, r, generate) {
   catch (e) { return r(`Não posso criar "${rel.slice(0, 60)}", ${a.short}. ${e.message}`); }
   const others = workspace.listTree(60).map(x => x.rel);
   let code, f;
-  try { code = await codewriter.writeCode(generate, models, p?.level || models.defaultLevel, { request: `${text}${pick.pedido ? `\n\nDetalhes: ${String(pick.pedido).slice(0, 800)}` : ''}${others.length ? `\n\nArquivos que já existem no projeto (use os mesmos nomes e caminhos ao referenciar): ${others.join(', ')}` : ''}`, file: rel }); }
+  try { code = await codewriter.writeCode(generate, models, fileLevel(p), { request: `${text}${pick.pedido ? `\n\nDetalhes: ${String(pick.pedido).slice(0, 800)}` : ''}${others.length ? `\n\nArquivos que já existem no projeto (use os mesmos nomes e caminhos ao referenciar): ${others.join(', ')}` : ''}`, file: rel }); }
   catch (e) { return r(`Não consegui escrever o código agora, ${a.short}. ${e instanceof ProviderError ? friendlyAIError(e) : e.code ? e.message : 'Tente de novo em instantes.'}`); }
   try { f = workspace.createFile(rel, code); } catch (e) { return r(`Não consegui criar o arquivo, ${a.short}. ${e.message}`); }
   let typing = false;
@@ -1078,7 +1161,7 @@ async function codeWrite(pick, p, text, a, r, generate) {
   if (workspace.active() && !/\bpasta jarvis code\b/.test(fold(text))) return codeWriteWs(pick, p, text, a, r, generate);
   const name = codewriter.safeName(pick.arquivo, pick.linguagem);
   let code, file;
-  try { code = await codewriter.writeCode(generate, models, p?.level || models.defaultLevel, { request: `${text}${pick.pedido ? `\n\nDetalhes: ${String(pick.pedido).slice(0, 800)}` : ''}`, file: name }); }
+  try { code = await codewriter.writeCode(generate, models, fileLevel(p), { request: `${text}${pick.pedido ? `\n\nDetalhes: ${String(pick.pedido).slice(0, 800)}` : ''}`, file: name }); }
   catch (e) { return r(`Não consegui escrever o código agora, ${a.short}. ${e instanceof ProviderError ? friendlyAIError(e) : e.code ? e.message : 'Tente de novo em instantes.'}`); }
   try { file = codewriter.createFile(name); } catch (e) { return r(`Não consegui criar o arquivo, ${a.short}. ${e.code === 409 ? e.message : ''}`.trim()); }
   const short = path.basename(file), lines = code.split('\n').length - 1;

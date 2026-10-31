@@ -92,6 +92,18 @@ try {
     assert.ok(!/<[a-z][^>]*\s*[a-z-]+\s*=|<(img|script|style|iframe|svg|base|meta|link|a)\b|url\(/i.test(h), `${e} => ${h}`);
   }
   assert.equal(fm.safeHtml('<h2 class="x">T</h2><td colspan="2" style="x">1</td>'), '<h2>T</h2><td colspan="2">1</td>');
+  // Modo livre (o corpo do PDF, onde a IA desenha): classes e style passam, mas nada que busque fora.
+  for (const e of evil) {
+    const h = fm.safeHtml(e, { free: true });
+    const tags = (h.match(/<[^>]*>/g) || []).join(' ');
+    assert.ok(!/<(img|script|style|iframe|svg|base|meta|link|a)\b|url\(|\bon[a-z]+\s*=|href|src=|background=/i.test(tags), `livre: ${e} => ${h}`);
+  }
+  const fr = fm.safeHtml(String.raw`<p class="faixa-verde x" style="color:#c00;background:url(http://evil/a);font-weight:700">a</p><td style='background-image:u\72l(http://evil)'>b</td><div style="x:1&quot; onclick=&quot;alert(1)">c</div>`, { free: true });
+  assert.match(fr, /<p class="faixa-verde x" style="color:#c00;\s*font-weight:700">/); assert.ok(!/url|evil|72l|onclick="/i.test(fr), fr);
+  const css = fm.safeCss(String.raw`@import url(http://evil/a.css); @font-face{font-family:x;src:url(http://evil/f.woff)} .a{color:red;background:url(//evil/b)} .b{background:image-set("http://evil" 1x)} .c{width:5pt}</style><script>alert(1)</script> .d{behavior:url(x.htc);-moz-binding:x} .e{background:u\72l(http://evil)}`);
+  assert.ok(!/import|font-face|url|evil|image-set|<|behavior|binding|72l/i.test(css), css); assert.match(css, /\.a\{color:red;/); assert.match(css, /\.c\{width:5pt\}/);
+  const pe = fm.pdfHtml('T', '<p class="x">y</p>', 'azul', [], '.x{color:red} @page{size:A4 landscape}');
+  assert.match(pe, /<style>\.x\{color:red\} @page\{size:A4 landscape\}<\/style><\/head>/); assert.match(pe, /<p class="x">y<\/p>/);
   assert.match(fm.pdfHtml('T', '<p>x</p>'), /<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none';/);
   assert.ok(!/script-src/.test(fm.PDF_CSP), 'sem script na página impressa');
   const args = fm.chromeArgs(DIR, 'o.pdf', 'C:\\x\\doc.html');

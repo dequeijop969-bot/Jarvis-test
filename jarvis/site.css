@@ -33,8 +33,19 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 
 /* Topo */
 .nav{position:fixed;inset:0 0 auto;z-index:30;transition:background .3s,border-color .3s,backdrop-filter .3s;border-bottom:1px solid transparent}
-.nav.sc{background:color-mix(in oklab,var(--bg) 78%,transparent);backdrop-filter:blur(18px) saturate(1.3);border-bottom-color:var(--line)}
-.nav .wrap{display:flex;align-items:center;gap:18px;height:68px}
+.nav.sc{background:none;border-bottom-color:transparent}
+.nav .wrap{display:flex;align-items:center;gap:18px;height:64px;margin-top:14px;padding:0 12px 0 22px;border-radius:18px;border:1px solid var(--line);background:#14161a99;backdrop-filter:blur(14px);transition:background .3s,border-color .3s}
+.nav.sc .wrap{background:#14161ae6;border-color:var(--line2)}
+.nav .brand{margin-right:0!important}
+.nav nav{margin:0 auto}
+.nav .acts{margin-left:auto}
+.nav .mic{position:relative;display:grid;place-items:center;width:40px;height:40px;border-radius:12px;border:1px solid var(--line2);background:#14161acc;color:var(--mute);cursor:pointer;transition:color .2s,background .2s,border-color .2s}
+.nav .mic:hover{color:var(--text);border-color:#4d505a}
+.nav .mic::after{content:'';position:absolute;inset:-5px;border-radius:15px;border:1px solid var(--acc);opacity:0}
+body.hx-listen .nav .mic{color:var(--ink);background:var(--acc);border-color:var(--acc2)}
+body.hx-listen .nav .mic::after{animation:hx-ring 1.1s var(--ease) infinite}
+@keyframes hx-ring{0%{opacity:.9;inset:-2px}100%{opacity:0;inset:-12px}}
+@media (max-width:600px){.nav .mic{display:none}.nav .wrap{padding:0 10px 0 16px}}
 .brand{display:inline-flex;align-items:center;gap:11px;font:400 14px var(--mono);letter-spacing:.34em;text-decoration:none;margin-right:auto}
 .brand b{color:var(--acc);font-weight:400}
 .brand i{width:10px;height:10px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 3px color-mix(in oklab,var(--acc) 22%,transparent),0 0 16px var(--acc);animation:bp 2.6s ease-in-out infinite}
@@ -47,36 +58,77 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 @media (max-width:520px){.nav .acts .ghost{padding:9px 12px}.nav .acts .ghost svg{display:none}}
 @media (max-width:360px){.nav .acts .ghost{display:none}}
 
-/* HERO: núcleo 3D no centro da tela e os textos centralizados POR CIMA dele. */
-.hero{position:relative;min-height:100svh;display:grid;place-items:center;overflow:hidden;isolation:isolate}
-.hero .stage{position:absolute;inset:0;z-index:0}
-.hero .stage canvas{width:100%!important;height:100%!important;display:block}
-/* sem WebGL: orbe estático no mesmo lugar */
-.stage.no3d::before{content:'';position:absolute;left:50%;top:50%;width:min(62vmin,560px);aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;
-  background:radial-gradient(circle,var(--acc2) 0 7%,color-mix(in oklab,var(--acc) 55%,transparent) 12%,color-mix(in oklab,var(--acc) 14%,transparent) 32%,transparent 62%);
-  box-shadow:0 0 0 1px color-mix(in oklab,var(--acc) 30%,transparent),inset 0 0 0 46px #0b0c0f00,0 0 120px -20px var(--acc)}
-.stage.no3d::after{content:'';position:absolute;left:50%;top:50%;width:min(80vmin,720px);aspect-ratio:1;transform:translate(-50%,-50%) rotateX(68deg);border-radius:50%;border:1px solid color-mix(in oklab,var(--acc) 45%,transparent)}
-/* vinheta para o texto ler bem sobre o brilho */
-.hero::after{content:'';position:absolute;inset:0;z-index:1;pointer-events:none;
-  background:radial-gradient(42% 30% at 50% 50%,#0b0c0f8c,transparent 72%),linear-gradient(180deg,#0b0c0f 0,transparent 16%,transparent 78%,var(--bg) 100%)}
-.hero .copy{position:relative;z-index:2;text-align:center;display:grid;justify-items:center;gap:22px;padding:110px 16px 90px;max-width:900px}
-.eyebrow{display:inline-flex;align-items:center;gap:10px;font:500 12.5px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--acc2);
-  padding:7px 14px;border-radius:999px;border:1px solid color-mix(in oklab,var(--acc) 35%,transparent);background:#0b0c0fa6;backdrop-filter:blur(8px)}
-.eyebrow i{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok);flex:none}
-@media (max-width:520px){.eyebrow{font-size:10.5px;letter-spacing:.1em;padding:6px 12px;gap:8px}.hero .lead{font-size:15.5px}.hero::after{background:radial-gradient(72% 32% at 50% 50%,#0b0c0f9e,transparent 75%),linear-gradient(180deg,#0b0c0f 0,transparent 16%,transparent 78%,var(--bg) 100%)}}
-.hero h1{margin:0;font:800 clamp(42px,8.4vw,104px)/.98 'Montserrat',sans-serif;letter-spacing:-.035em;text-wrap:balance;text-shadow:0 4px 40px #0b0c0f}
-.hero h1 em{font:italic 400 1.02em var(--serif);letter-spacing:-.01em;color:var(--acc2);text-shadow:0 0 50px color-mix(in oklab,var(--acc) 55%,transparent)}
-.hero .lead{margin:0;max-width:620px;font-size:clamp(16px,2vw,19px);color:#d6d3cc;text-shadow:0 2px 18px #0b0c0f}
-.hero .ctas{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:6px}
-/* legenda falada, como o app mostra, centralizada sob os botões */
-.caption{margin-top:6px;font:500 15px var(--mono);color:var(--mute);min-height:1.6em;text-shadow:0 2px 14px #0b0c0f}
-.caption b{color:var(--text);font-weight:500}
-.caption .cur{display:inline-block;width:8px;height:1.05em;margin-left:3px;vertical-align:-2px;background:var(--acc);animation:blink 1s steps(1) infinite}
-@keyframes blink{50%{opacity:0}}
-.scrollhint{position:absolute;z-index:2;left:50%;bottom:22px;transform:translateX(-50%);display:grid;justify-items:center;gap:6px;font:500 11px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--dim);text-decoration:none}
-.scrollhint span{width:22px;height:34px;border:1.5px solid var(--line2);border-radius:12px;position:relative}
-.scrollhint span::after{content:'';position:absolute;left:50%;top:7px;width:3px;height:7px;border-radius:2px;background:var(--acc);transform:translateX(-50%);animation:wheel 1.8s var(--ease) infinite}
-@keyframes wheel{0%{opacity:0;transform:translate(-50%,-3px)}40%{opacity:1}100%{opacity:0;transform:translate(-50%,10px)}}
+/* HERO: o arco do reator. Título num painel de vidro; atrás, o anel do núcleo em camadas que giram, com a faixa de
+   ferramentas (ícones dos apps) correndo na borda, cometas de luz e poeira que reage ao mouse. O microfone do topo "acorda" o anel
+   e o Jarvis Code passeia pela borda de baixo. */
+@property --hx-a{syntax:'<angle>';inherits:false;initial-value:0deg}
+.hx{position:relative;min-height:100svh;display:flex;flex-direction:column;overflow:hidden;isolation:isolate;
+  background:radial-gradient(70% 55% at 50% 30%,#1c170d 0,transparent 70%),radial-gradient(40% 40% at 50% 110%,#0d1d24,transparent 70%),var(--bg)}
+.hx .noise{position:absolute;inset:-50%;z-index:3;pointer-events:none;opacity:.05;animation:hx-grain 1s steps(4) infinite;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+@keyframes hx-grain{25%{transform:translate(-3%,2%)}50%{transform:translate(2%,-3%)}75%{transform:translate(-2%,-1%)}}
+#hxDust{position:absolute;inset:0;z-index:-2;width:100%;height:100%}
+.hx .arcs{position:absolute;inset:0;z-index:-1;pointer-events:none}
+.hx .arc{position:absolute;inset:-40px;width:calc(100% + 80px);height:calc(100% + 80px);will-change:transform}
+.hx .arc .r{transform-box:view-box;transform-origin:600px -60px}
+.hx .arc .slow{animation:hx-spin 120s linear infinite}
+.hx .arc .rev{animation:hx-spin 70s linear infinite reverse}
+.hx .arc .txt{animation:hx-spin 90s linear infinite;font:500 13px var(--mono);letter-spacing:6px;fill:#f2b33d}
+.hx .arc .txt > g > text,.hx .arc .txt > circle{opacity:.6}
+.hx .arc .txt > g > g{filter:drop-shadow(0 0 6px #0b0c0f)}
+.hx .arc .txt .ic{fill:none;stroke:#ffc960;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+@keyframes hx-spin{to{rotate:360deg}}
+.hx .arc.glow{filter:blur(28px);opacity:.55;transition:opacity .6s,filter .6s}
+.hx .arc .comet{stroke-dasharray:180 3340;animation:hx-comet 7s linear infinite}
+.hx .arc .comet.b{stroke-dasharray:90 3430;animation-duration:11s;animation-direction:reverse}
+@keyframes hx-comet{to{stroke-dashoffset:-3520}}
+.hx .arc .pulse{opacity:0;transform-box:view-box;transform-origin:600px -60px}
+.hx.listen .arc.glow{opacity:1;filter:blur(36px) brightness(1.3)}
+.hx.listen .arc .main{filter:brightness(1.2)}
+.hx.listen .arc .pulse{animation:hx-ping 1.2s var(--ease) infinite}
+@keyframes hx-ping{0%{opacity:.8;transform:scale(.92)}100%{opacity:0;transform:scale(1.12)}}
+.hx .center{flex:1;display:grid;justify-items:center;align-content:center;text-align:center;gap:22px;padding:110px 16px 210px}
+.hx .plate{position:relative;padding:clamp(20px,3vw,36px) clamp(22px,5vw,68px) clamp(24px,3.4vw,40px);border-radius:30px;
+  background:linear-gradient(180deg,#15171cd9,#0b0c0fe8);backdrop-filter:blur(18px) saturate(1.2);box-shadow:0 60px 120px -50px #000,inset 0 1px 0 #ffffff14}
+.hx .plate::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1.5px;pointer-events:none;
+  background:conic-gradient(from var(--hx-a),transparent 0 20%,var(--acc2) 30%,transparent 42%,transparent 60%,var(--code) 72%,transparent 84%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:hx-rot 6s linear infinite}
+.hx .plate::after{content:'';position:absolute;inset:0;border-radius:inherit;border:1px solid #ffffff10;pointer-events:none}
+@keyframes hx-rot{to{--hx-a:360deg}}
+.hx h1{margin:10px 0 0;font:800 clamp(44px,8vw,116px)/.94 'Montserrat',sans-serif;letter-spacing:-.045em;text-wrap:balance}
+.hx h1 .w{display:inline-block;opacity:0;filter:blur(14px);translate:0 .25em;animation:hx-word 1s var(--ease) forwards;animation-delay:calc(var(--i) * 110ms + 300ms)}
+@keyframes hx-word{to{opacity:1;filter:none;translate:0}}
+.hx h1 .serif{font-family:var(--serif);font-style:italic;font-weight:400;letter-spacing:-.01em;padding-right:.08em;
+  background:linear-gradient(100deg,var(--acc) 20%,#fff1c9 45%,var(--acc2) 60%,var(--acc) 85%);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:hx-word 1s var(--ease) forwards,hx-sheen 5s ease-in-out 1.8s infinite;animation-delay:calc(var(--i) * 110ms + 300ms),1.8s}
+@keyframes hx-sheen{0%,100%{background-position:100% 0}50%{background-position:0 0}}
+.hx .listen-say{position:absolute;left:50%;top:calc(100% + 14px);translate:-50% 0;white-space:nowrap;font:500 13px var(--mono);color:var(--acc2);opacity:0;transition:opacity .3s}
+.hx.listen .listen-say{opacity:1}
+.hx .sub{max-width:660px;margin:0;padding:12px 22px;border-radius:16px;background:#0b0c0fc4;border:1px solid #ffffff0d;backdrop-filter:blur(12px);color:#dedad2;font-size:clamp(15px,1.8vw,18.5px);text-wrap:pretty}
+.hx .ctas{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.hx .ctas .btn{padding:15px 24px}
+.hx .meta{position:absolute;left:16px;right:16px;bottom:128px;z-index:2;display:flex;flex-wrap:wrap;justify-content:center;gap:8px 22px;font:500 12.5px var(--mono);color:var(--dim)}
+.hx .meta span{display:inline-flex;align-items:center;gap:7px}
+.hx .meta svg{width:15px;height:15px;color:var(--acc)}
+.hx .rise{opacity:0;transform:translateY(18px);animation:hx-rise .9s var(--ease) forwards;animation-delay:calc(var(--d,0) * 90ms + 120ms)}
+@keyframes hx-rise{to{opacity:1;transform:none}}
+/* chão: o Jarvis Code passeia pela borda de baixo */
+.hx .hxfloor{position:absolute;left:0;right:0;bottom:0;height:110px;z-index:2;pointer-events:none}
+.hx .hxfloor::before{content:'';position:absolute;left:4%;right:4%;bottom:22px;height:1px;background:linear-gradient(90deg,transparent,var(--line2) 15%,color-mix(in oklab,var(--acc) 50%,var(--line2)) 50%,var(--line2) 85%,transparent)}
+.hx .lane{position:absolute;left:6%;right:6%;bottom:22px;height:90px}
+.hx .walker{position:absolute;left:0;bottom:0;will-change:transform}
+.hx .walker canvas{display:block;image-rendering:pixelated}
+.hx .bubble{position:absolute;bottom:100%;left:50%;translate:-50% -6px;white-space:nowrap;padding:7px 12px;border-radius:12px;border:1px solid var(--line2);background:#14161af2;font:500 12px var(--mono);color:var(--text);
+  opacity:0;scale:.9;transition:opacity .25s,scale .25s var(--ease)}
+.hx .bubble.on{opacity:1;scale:1}
+.hx .bubble::after{content:'';position:absolute;left:50%;top:100%;width:9px;height:9px;translate:-50% -5px;rotate:45deg;background:#14161a;border-right:1px solid var(--line2);border-bottom:1px solid var(--line2)}
+/* brilho que passa pelo botão principal; botões magnéticos */
+.hx .btn.pri{position:relative;overflow:hidden}
+.hx .btn.pri::before{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,#ffffff8c 50%,transparent 65%);translate:-120% 0;animation:hx-shine 4.5s var(--ease) 1.5s infinite}
+@keyframes hx-shine{0%{translate:-120% 0}30%,100%{translate:120% 0}}
+.hx .mag{transition:translate .25s var(--ease),transform .2s var(--ease),border-color .2s,box-shadow .3s}
+@media (prefers-reduced-motion:reduce){.hx *,.hx *::before,.hx *::after{animation:none!important}.hx .rise,.hx h1 .w{opacity:1;transform:none;filter:none;translate:0}}
+@media (max-width:600px){.hx .center{padding-top:96px}}
 
 /* Faixa de números */
 .strip{border-block:1px solid var(--line);background:linear-gradient(180deg,#ffffff04,transparent)}

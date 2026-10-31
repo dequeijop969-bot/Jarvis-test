@@ -40,6 +40,7 @@
       <a href="#recursos">Recursos</a><a href="#novidades">Novidades</a><a href="#jarvis-code">Jarvis Code</a><a href="#web-ou-app">Web ou app</a><a href="#privacidade">Privacidade</a>
     </nav>
     <div class="acts">
+      <button class="mic" id="hxMic" type="button" aria-label="Chamar o Jarvis"><svg class="i"><use href="#i-mic"/></svg></button>
       <a class="btn sm ghost" href="/entrar" id="navLogin">Entrar</a>
       <a class="btn sm pri" href="/baixar"><svg class="i"><use href="#i-win"/></svg>Baixar</a>
       <button class="mbtn" id="mBtn" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="mNav"><svg class="i"><use href="#i-menu"/></svg></button>
@@ -65,19 +66,54 @@
 </div>
 
 <main>
-  <section class="hero" aria-labelledby="h1">
-    <div class="stage" id="stage"></div>
-    <div class="copy">
-      <span class="eyebrow"><i></i>Assistente por voz · em português</span>
-      <h1 id="h1">Seu mordomo digital, <em>por voz.</em></h1>
-      <p class="lead">O JARVIS conversa, apresenta slides narrados e organiza seu dia. No app para Windows, atende quando você diz "Jarvis", cria PDFs e arquivos e faz as tarefas no PC por você.</p>
-      <div class="ctas">
-        <a class="btn pri" href="/baixar"><svg class="i"><use href="#i-win"/></svg>Baixar para Windows</a>
-        <a class="btn" href="/app" data-web><svg class="i"><use href="#i-globe"/></svg>Usar no navegador</a>
-      </div>
-      <p class="caption" id="cap" aria-live="off"><span id="capText"></span><span class="cur" aria-hidden="true"></span></p>
+  <section class="hx" id="hx" aria-labelledby="h1">
+    <div class="noise" aria-hidden="true"></div>
+    <canvas id="hxDust" aria-hidden="true"></canvas>
+    <div class="arcs" aria-hidden="true">
+      <svg width="0" height="0" style="position:absolute"><defs>
+        <linearGradient id="g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#8fb8ff" stop-opacity=".35"/><stop offset=".3" stop-color="#f2b33d"/><stop offset=".5" stop-color="#ffd27a"/><stop offset=".7" stop-color="#f2b33d"/><stop offset="1" stop-color="#5fd4ff" stop-opacity=".45"/></linearGradient>
+        <path id="tp" d="M600,-60 m-640,0 a640,640 0 1,0 1280,0 a640,640 0 1,0 -1280,0"/></defs></svg>
+      <svg class="arc" data-depth="10" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMin slice"><defs><radialGradient id="fa" cx=".5" cy="0" r="1.05"><stop offset=".5" stop-color="#fff"/><stop offset=".95" stop-color="#fff" stop-opacity="0"/></radialGradient><mask id="ma"><rect x="-400" y="-200" width="2000" height="1200" fill="url(#fa)"/></mask></defs><g mask="url(#ma)">
+        <circle class="r slow" cx="600" cy="-60" r="760" fill="none" stroke="#33363f" stroke-width="1" stroke-dasharray="2 10"/>
+        <g class="r txt" id="ring"></g>
+      </g></svg>
+      <svg class="arc glow" data-depth="22" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMin slice"><defs><radialGradient id="fb" cx=".5" cy="0" r="1.05"><stop offset=".5" stop-color="#fff"/><stop offset=".95" stop-color="#fff" stop-opacity="0"/></radialGradient><mask id="mb"><rect x="-400" y="-200" width="2000" height="1200" fill="url(#fb)"/></mask></defs><g mask="url(#mb)">
+        <circle cx="600" cy="-60" r="560" fill="none" stroke="url(#g)" stroke-width="110"/>
+      </g></svg>
+      <svg class="arc" data-depth="22" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMin slice"><defs><radialGradient id="fc" cx=".5" cy="0" r="1.05"><stop offset=".5" stop-color="#fff"/><stop offset=".95" stop-color="#fff" stop-opacity="0"/></radialGradient><mask id="mc"><rect x="-400" y="-200" width="2000" height="1200" fill="url(#fc)"/></mask></defs><g mask="url(#mc)">
+        <circle class="pulse" cx="600" cy="-60" r="560" fill="none" stroke="#ffc960" stroke-width="3"/>
+        <circle class="main" cx="600" cy="-60" r="560" fill="none" stroke="url(#g)" stroke-width="92"/>
+        <circle class="r rev" cx="600" cy="-60" r="560" fill="none" stroke="#0b0c0f" stroke-width="92" stroke-dasharray="1.5 16" opacity=".32"/>
+        <circle cx="600" cy="-60" r="606" fill="none" stroke="#ffd27a" stroke-opacity=".5" stroke-width="1.5"/>
+        <circle cx="600" cy="-60" r="514" fill="none" stroke="#0b0c0f" stroke-opacity=".8" stroke-width="2"/>
+        <circle class="comet" cx="600" cy="-60" r="560" fill="none" stroke="#fff6dc" stroke-width="5" stroke-linecap="round"/>
+        <circle class="comet b" cx="600" cy="-60" r="560" fill="none" stroke="#9be6ff" stroke-width="3" stroke-linecap="round"/>
+      </g></svg>
+      <svg class="arc" data-depth="36" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMin slice"><defs><radialGradient id="fd" cx=".5" cy="0" r="1.05"><stop offset=".5" stop-color="#fff"/><stop offset=".95" stop-color="#fff" stop-opacity="0"/></radialGradient><mask id="md"><rect x="-400" y="-200" width="2000" height="1200" fill="url(#fd)"/></mask></defs><g mask="url(#md)">
+        <circle class="r rev" cx="600" cy="-60" r="470" fill="none" stroke="#5fd4ff" stroke-opacity=".45" stroke-width="12" stroke-dasharray="1.2 13.56"/>
+        <circle class="r rev" cx="600" cy="-60" r="470" fill="none" stroke="#5fd4ff" stroke-opacity=".8" stroke-width="22" stroke-dasharray="2 145.6"/>
+        <circle class="r slow" cx="600" cy="-60" r="420" fill="none" stroke="#f2b33d" stroke-opacity=".3" stroke-width="1" stroke-dasharray="220 30 6 30"/>
+      </g></svg>
     </div>
-    <a class="scrollhint" href="#recursos" aria-label="Ver recursos"><span></span>Role</a>
+    <div class="center">
+      <div class="plate rise" style="--d:1">
+        <h1 id="h1" aria-label="Seu mordomo digital, por voz."><span class="w" style="--i:0">Seu</span> <span class="w" style="--i:1">mordomo</span><br><span class="w" style="--i:2">digital,</span> <span class="w serif" style="--i:3">por voz.</span></h1>
+        <span class="listen-say" aria-hidden="true">“Estou ouvindo, senhor.”</span>
+      </div>
+      <p class="sub rise" style="--d:5">Conversa, organiza seu dia, cria PDFs e arquivos e faz as tarefas no PC por você. É só dizer “Jarvis”.</p>
+      <div class="ctas rise" style="--d:6">
+        <a class="btn pri mag" href="/baixar"><svg class="i"><use href="#i-win"/></svg>Baixar para Windows</a>
+        <a class="btn mag" href="/app" data-web><svg class="i"><use href="#i-globe"/></svg>Usar no navegador</a>
+      </div>
+      <div class="meta rise" style="--d:7">
+        <span><svg class="i"><use href="#i-check"/></svg>Grátis</span>
+        <span><svg class="i"><use href="#i-check"/></svg>Windows 10 e 11</span>
+        <span><svg class="i"><use href="#i-check"/></svg>Em português</span>
+      </div>
+    </div>
+    <div class="hxfloor" aria-hidden="true">
+      <div class="lane"><div class="walker" id="hxJc"><span class="bubble" id="hxBub"></span><canvas data-sprite="andar"></canvas></div></div>
+    </div>
   </section>
 
   <div class="strip">
@@ -233,7 +269,7 @@
 
       <!-- Palco: o próprio Jarvis Code, grande, mostrando cada um dos seus modos (os mesmos quadros do app) -->
       <div class="jcstage rv" id="jcStage">
-        <div class="floor" aria-hidden="true">
+        <div class="hxfloor" aria-hidden="true">
           <div class="spot"></div>
           <div class="actor" id="stageActor"><span class="say" id="stageSay"></span><img alt="" src="/jc/andar_01.png"></div>
           <div class="shadow" id="stageShadow"></div>
@@ -424,17 +460,9 @@
   </div>
 </footer>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
-<script src="/site3d.js" defer></script>
 <script src="/site-jc.js" defer></script>
 <script src="/site-nav.js" defer></script>
 <script>
-// Cena 3D do hero (o núcleo no centro, atrás do texto). Sem three.js: o orbe estático do CSS.
-addEventListener('DOMContentLoaded', () => {
-  const stage = document.getElementById('stage');
-  try { window.JarvisScene ? JarvisScene(stage, { particles: innerWidth < 700 ? 700 : 1500 }) : stage.classList.add('no3d'); } catch { stage.classList.add('no3d'); }
-});
-
 // Novidades no celular: carrossel de lado, com pontinhos.
 const nvs = document.querySelector('.nvs'), dots = document.getElementById('nvDots');
 if (nvs && dots) {
@@ -451,18 +479,101 @@ if (nvs && dots) {
 // Já logado: "Entrar" vira "Minha conta".
 fetch('/api/auth/me').then(r => r.json()).then(j => { if (j.user) for (const a of [document.getElementById('navLogin'), document.getElementById('mLogin')]) { a.textContent = 'Minha conta'; a.href = '/baixar'; } }).catch(() => {});
 
-// Legenda no centro do hero, digitada como as respostas do app.
-const LINES = ['"Bom dia, senhor. 24 graus e três e-mails que merecem atenção."', '"Abrindo o Discord no segundo monitor. Ele adora se sentir útil."', '"Refinei o site da padaria. Código impecável, se me permite."', '"Esse e-mail da Stripe não é da Stripe. Eu não clicaria."'];
-const capEl = document.getElementById('capText'), RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-(async () => {
-  if (RM) { capEl.textContent = LINES[0]; return; }
-  for (let k = 0; ; k = (k + 1) % LINES.length) {
-    const s = LINES[k];
-    for (let i = 1; i <= s.length; i++) { capEl.textContent = s.slice(0, i); await new Promise(r => setTimeout(r, 32)); }
-    await new Promise(r => setTimeout(r, 2600));
-    for (let i = s.length; i >= 0; i -= 3) { capEl.textContent = s.slice(0, i); await new Promise(r => setTimeout(r, 12)); }
-    await new Promise(r => setTimeout(r, 300));
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Hero (arco do reator): poeira com paralaxe, faixa de ferramentas no anel, microfone e o Jarvis Code passeando.
+(() => {
+  const hx = document.getElementById('hx'); if (!hx) return;
+  const FINE = matchMedia('(pointer: fine)').matches;
+  const cv = document.getElementById('hxDust'), ctx = cv.getContext('2d');
+  let W, H, pts = [], mx = 0, my = 0, tx = 0, ty = 0, vis = true;
+  function size() {
+    const dpr = Math.min(2, devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pts = Array.from({ length: Math.round(W * H / 9000) }, () => ({ x: Math.random() * W, y: Math.random() * H, z: .3 + Math.random() * .7, c: Math.random() < .7 ? '242,179,61' : '95,212,255', p: Math.random() * 6 }));
   }
+  addEventListener('resize', size); size();
+  addEventListener('pointermove', e => { tx = e.clientX / innerWidth - .5; ty = e.clientY / innerHeight - .5; }, { passive: true });
+  new IntersectionObserver(es => { vis = es[0].isIntersecting; }).observe(hx);
+  const layers = [...hx.querySelectorAll('.arc[data-depth]')];
+  (function loop(t) {
+    if (vis) {
+      mx += (tx - mx) * .05; my += (ty - my) * .05;
+      ctx.clearRect(0, 0, W, H);
+      for (const p of pts) {
+        if (!RM) { p.y -= p.z * .25; if (p.y < -10) { p.y = H + 10; p.x = Math.random() * W; } }
+        const x = p.x - mx * 40 * p.z, y = p.y - my * 30 * p.z, a = (.25 + .5 * Math.sin(t / 900 + p.p) ** 2) * p.z;
+        ctx.fillStyle = `rgba(${p.c},${a})`; ctx.beginPath(); ctx.arc(x, y, p.z * 1.6, 0, 7); ctx.fill();
+      }
+      if (FINE && !RM) layers.forEach(g => { const d = Number(g.dataset.depth); g.style.transform = `translate(${-mx * d}px,${-my * d * .6}px)`; });
+    }
+    if (!RM) requestAnimationFrame(loop);
+  })(0);
+
+  // Faixa do anel: cada ferramenta com o seu ícone, deitada na curva (3 voltas dos 8 itens).
+  // Ícones coloridos dos apps (versão de teste). Os do Jarvis ficam no traço âmbar (classe ic).
+  const ICONS = {
+    JARVIS: '<g class="ic"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="8.5"/></g>',
+    GMAIL: '<path fill="#fff" d="M3 5h18v14H3z" opacity=".0"/><path fill="#4285F4" d="M2 6.5V18a1.5 1.5 0 0 0 1.5 1.5H6V10z"/><path fill="#34A853" d="M18 19.5h2.5A1.5 1.5 0 0 0 22 18V6.5L18 10z"/><path fill="#EA4335" d="M6 10V5.2l6 4.5 6-4.5V10l-6 4.5z"/><path fill="#FBBC04" d="M18 5.2V10l4-3.5v-.8c0-1.4-1.6-2.2-2.7-1.4z"/><path fill="#C5221F" d="M2 5.7v.8L6 10V5.2l-1.3-.9C3.6 3.5 2 4.3 2 5.7z"/>',
+    AGENDA: '<rect x="3" y="3" width="18" height="18" rx="3" fill="#fff"/><path fill="#4285F4" d="M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v1.5H3z"/><path fill="#EA4335" d="M21 16.5V18a3 3 0 0 1-3 3h-1.5z"/><text x="12" y="17.6" text-anchor="middle" style="font:700 8.5px Montserrat,sans-serif;letter-spacing:0;fill:#1a73e8">31</text>',
+    SPOTIFY: '<circle cx="12" cy="12" r="10" fill="#1DB954"/><path d="M6.8 9.2c3.6-1 7.6-.7 10.6 1M7.4 12.3c3-.8 6.2-.5 8.7.9M8 15.2c2.4-.6 4.8-.4 6.8.7" fill="none" stroke="#0b0c0f" stroke-width="1.6" stroke-linecap="round"/>',
+    YOUTUBE: '<rect x="2" y="5.5" width="20" height="13" rx="4" fill="#FF0000"/><path d="M10 9.2v5.6l4.8-2.8z" fill="#fff"/>',
+    ARQUIVOS: '<path fill="#E0A82E" d="M2.5 6.5A1.5 1.5 0 0 1 4 5h5l2 2h9a1.5 1.5 0 0 1 1.5 1.5V9h-19z"/><path fill="#F8C14A" d="M2.5 9h19v9A1.5 1.5 0 0 1 20 19.5H4A1.5 1.5 0 0 1 2.5 18z"/>',
+    PDF: '<path fill="#E53935" d="M6 2.5h8l4.5 4.5v13a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 20V4A1.5 1.5 0 0 1 6 2.5z"/><path fill="#ff8a80" d="M14 2.5V7h4.5z"/><text x="11.5" y="17" text-anchor="middle" style="font:800 5.6px Montserrat,sans-serif;letter-spacing:0;fill:#fff">PDF</text>',
+    PLANILHAS: '<path fill="#1E9E5A" d="M6 2.5h8l4.5 4.5v13a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 20V4A1.5 1.5 0 0 1 6 2.5z"/><path fill="#7fd6a4" d="M14 2.5V7h4.5z"/><path d="M7.5 10.5h8v7h-8zM7.5 13h8M7.5 15.5h8M11 10.5v7" fill="none" stroke="#fff" stroke-width="1"/>',
+  };
+  const ring = document.getElementById('ring'), names = Object.keys(ICONS), N = names.length * 3, R = 640, NS = 'http://www.w3.org/2000/svg';
+  for (let i = 0; i < N; i++) {
+    const name = names[i % names.length], th = Math.PI / 2 - (i / N) * Math.PI * 2, w = name.length * 13.8;
+    const g = document.createElementNS(NS, 'g');
+    g.setAttribute('transform', `translate(${600 + R * Math.cos(th)},${-60 + R * Math.sin(th)}) rotate(${th * 180 / Math.PI - 90})`);
+    g.innerHTML = `<g transform="translate(${-(w + 32) / 2},-19) scale(1.05)">${ICONS[name]}</g><text x="${-(w + 32) / 2 + 32}" y="0">${name}</text>`;
+    const th2 = th - Math.PI / N, dot = document.createElementNS(NS, 'circle');
+    dot.setAttribute('cx', 600 + R * Math.cos(th2)); dot.setAttribute('cy', -60 + R * Math.sin(th2) + 0); dot.setAttribute('r', 2.2);
+    ring.append(g, dot);
+  }
+
+
+  // Jarvis Code: os quadros do app (/jc/), andando pela borda de baixo; para, faz algo e fala.
+  const ANIMS = { andar: [8, 10], acenar: [8, 8], pensar: [24, 6], feliz: [8, 10], pular: [8, 10] }, cache = {};
+  const frames = n => cache[n] ||= Array.from({ length: ANIMS[n][0] }, (_, i) => { const im = new Image(); im.src = `/jc/${n}_${String(i + 1).padStart(2, '0')}.png`; return im; });
+  const el = document.getElementById('hxJc'), jc = el.querySelector('canvas'), jx = jc.getContext('2d'), bub = document.getElementById('hxBub');
+  const LINES = { acenar: 'Às suas ordens, senhor.', pensar: 'Analisando sua agenda...', feliz: 'PDF pronto. De nada.', pular: 'Grátis! Baixe logo.' };
+  let st; const say = s => { bub.textContent = s; bub.classList.add('on'); clearTimeout(st); st = setTimeout(() => bub.classList.remove('on'), 2200); };
+  // Sem os quadros (servidor antigo, sem a pasta do app): ele some sem quebrar a página.
+  frames('andar')[0].addEventListener('error', () => { el.style.display = 'none'; });
+  let x = .15, dir = 1, mode = 'walk', until = 0, anim = 'andar', f = 0, acc = 0, last = performance.now();
+  (function tick(t) {
+    const dt = Math.min(100, t - last); last = t;
+    if (vis && !RM) {
+      const span = Math.max(1, el.parentElement.clientWidth - (jc.offsetWidth || 60));
+      if (mode === 'walk') {
+        anim = 'andar'; x += dir * (dt / 1000) * (52 / span);
+        if (x > .96 || x < .02) { dir *= -1; x = Math.min(.96, Math.max(.02, x)); }
+        if (t > until) { mode = 'idle'; until = t + 2200 + Math.random() * 1600; anim = ['acenar', 'pensar', 'feliz', 'pular'][Math.random() * 4 | 0]; f = 0; say(LINES[anim]); }
+      } else if (t > until) { mode = 'walk'; until = t + 3000 + Math.random() * 4000; if (Math.random() < .4) dir *= -1; }
+      el.style.transform = `translateX(${x * span}px)`; jc.style.transform = `scaleX(${dir})`;
+      acc += dt; const step = 1000 / ANIMS[anim][1]; while (acc >= step) { acc -= step; f = (f + 1) % ANIMS[anim][0]; }
+    }
+    const im = frames(anim)[f % ANIMS[anim][0]];
+    if (im.complete && im.naturalWidth) {
+      if (jc.width !== im.naturalWidth) { jc.width = im.naturalWidth; jc.height = im.naturalHeight; jc.style.width = im.naturalWidth * 1.6 + 'px'; jc.style.height = im.naturalHeight * 1.6 + 'px'; }
+      jx.imageSmoothingEnabled = false; jx.clearRect(0, 0, jc.width, jc.height); jx.drawImage(im, 0, 0);
+    }
+    requestAnimationFrame(tick);
+  })(last);
+
+  // Microfone do topo: o anel "acorda" e o Jarvis Code responde.
+  let t1;
+  document.getElementById('hxMic')?.addEventListener('click', () => {
+    hx.classList.add('listen'); document.body.classList.add('hx-listen'); say('Chamou, senhor?');
+    if (scrollY > innerHeight * .5) scrollTo({ top: 0, behavior: RM ? 'auto' : 'smooth' });
+    clearTimeout(t1); t1 = setTimeout(() => { hx.classList.remove('listen'); document.body.classList.remove('hx-listen'); }, 3600);
+  });
+  // Botões magnéticos.
+  if (FINE && !RM) hx.querySelectorAll('.mag').forEach(b => {
+    b.addEventListener('pointermove', e => { const r = b.getBoundingClientRect(); b.style.translate = `${(e.clientX - r.left - r.width / 2) * .18}px ${(e.clientY - r.top - r.height / 2) * .3}px`; });
+    b.addEventListener('pointerleave', () => { b.style.translate = ''; });
+  });
 })();
 
 // Aparecer ao rolar.

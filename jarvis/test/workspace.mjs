@@ -31,6 +31,7 @@ globalThis.fetch = (u, o) => {
   const reply = t => Promise.resolve(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: t }] } }] }), { status: 200, headers: { 'content-type': 'application/json' } }));
   if (s.includes('EDITANDO o arquivo')) return reply('```html\n<!doctype html>\n<title>Padaria</title>\n<footer>rodapé novo</footer>\n' + '<p>pao frances</p>\n'.repeat(20) + '```');
   if (s.includes('conteúdo COMPLETO')) return reply('export default function Menu() {\n  return <nav>Pães</nav>;\n}');
+  if (s.includes('CLASSIFICADOR DE PEDIDOS')) return reply(JSON.stringify(/pdf|planilha/i.test(s.split('Última mensagem do usuário:').pop()) ? { acao: 'criar', arquivo: 'nenhum' } : { acao: 'codigo', arquivo: 'projeto' }));
   if (s.includes('modo Code do assistente')) { planned = s; return reply(JSON.stringify(codePick)); }
   return Promise.resolve(new Response('{}', { status: 503 }));
 };
@@ -92,6 +93,12 @@ try {
   codePick = { acao: 'editar', arquivo: '../' + path.basename(OUT) + '/segredo.js', pedido: 'x' };
   await post('/api/chat', { text: 'edita o segredo', mode: 'code' });
   assert.equal(fs.readFileSync(path.join(OUT, 'segredo.js'), 'utf8'), 'nao mexer');
+  // PDF/documento com a pasta aberta: não é código, vai para o correio (o modo Code não entra nem recusa).
+  planned = '';
+  for (const t of ['me faz um PDF de um controle de eventos', 'cria uma planilha de estoque']) {
+    j = await (await post('/api/chat', { text: t, mode: 'code' })).json();
+    assert.equal(planned, '', t); assert.ok(!/Modo Code/.test(j.intro || ''), t);
+  }
 
   // "Parar de usar": volta para a pasta Jarvis Code.
   st = await (await post('/api/workspace', { clear: true })).json();

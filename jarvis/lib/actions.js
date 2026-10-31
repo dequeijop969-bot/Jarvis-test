@@ -33,6 +33,10 @@ const ACTIONS_SCHEMA = {
     params: (p) => typeof p.title === 'string' && p.title.length > 0 && Number.isFinite(p.start) && Number.isFinite(p.end) && p.end > p.start && typeof p.tz === 'string',
     risk: () => 'normal'
   },
+  'files_trash': {   // arquivos/pastas do computador para a Lixeira do Windows (restaurável)
+    params: (p) => Array.isArray(p.paths) && p.paths.length > 0 && p.paths.length <= 30 && p.paths.every(x => typeof x === 'string' && x.length < 600) && Array.isArray(p.preview),
+    risk: (p) => p.paths.length > 10 ? 'alto' : 'normal'
+  },
   'github_createbranch': {
     params: (p) => typeof p.repo === 'string' && typeof p.branch === 'string' && typeof p.from === 'string',
     risk: () => 'normal'
