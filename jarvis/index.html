@@ -1101,7 +1101,10 @@ const withAddr=t=>{const a=addr();return a?`${t}, ${a}`:t};
 
 /* ---------- Servidor (todas as escritas levam x-jarvis: proteção contra CSRF) ---------- */
 // Na web o servidor não guarda nada: o perfil dos Ajustes fica neste navegador e vai em cada pedido (JSON em base64).
-const WP_KEY='jarvis.webPerfil';
+const WP_KEY='jarvis.webPerfil',WA_KEY='jarvis.waContatos';
+// Contatos do WhatsApp na web: só neste navegador.
+function waList(){try{return JSON.parse(localStorage.getItem(WA_KEY)||'[]')}catch{return []}}
+function waSave(l){try{localStorage.setItem(WA_KEY,JSON.stringify(l))}catch{}}
 function webPerfil(){try{const s=localStorage.getItem(WP_KEY);return s?btoa(String.fromCharCode(...new TextEncoder().encode(s))):''}catch{return ''}}
 async function req(method,u,b){
   let r;const hd=method==='GET'?{}:{'content-type':'application/json','x-jarvis':'1'},wp=webPerfil();if(wp)hd['x-jarvis-perfil']=wp;
@@ -1714,8 +1717,9 @@ function listen(){
 async function ask(q,opts){
   const r=++run;setMode('think');audio.pause();flash('');voiceWarned=false;clearCache();
   try{
-    const d=await api('/api/chat',{text:q,mode:window.jMode?.()||'talk',wake:Date.now()-(window.__wake||0)<120000,files:window.__takeFiles?.()||[],...(opts?.voice?{voice:true,conf:opts.conf,alts:opts.alts}:{}),...(S.state?.web?{history:S.hist}:{})});if(r!==run)return;
-    if(S.state?.web){S.hist.push({role:'user',content:q},{role:'assistant',content:[d.intro,...(d.slides||[]).map(s=>`${s.title}: ${s.narration}`),d.outro].filter(Boolean).join(' ').slice(0,1200)});S.hist=S.hist.slice(-8)}
+    const d=await api('/api/chat',{text:q,mode:window.jMode?.()||'talk',wake:Date.now()-(window.__wake||0)<120000,files:window.__takeFiles?.()||[],...(opts?.voice?{voice:true,conf:opts.conf,alts:opts.alts}:{}),...(S.state?.web?{history:S.hist,wa:waList(),pend:window.__waPend||undefined}:{})});if(r!==run)return;
+    if(S.state?.web){window.__waPend=d.action?.web||null}
+  if(S.state?.web){S.hist.push({role:'user',content:q},{role:'assistant',content:[d.intro,...(d.slides||[]).map(s=>`${s.title}: ${s.narration}`),d.outro].filter(Boolean).join(' ').slice(0,1200)});S.hist=S.hist.slice(-8)}
     if(d.heard)$('#you').textContent='“'+d.heard+'”';   // o que o Jarvis entendeu, já corrigido
     if(d.abrirCorreio)window.__mailOpen?.(d.correio?.id);   // correio em pop-up nesta janela (no V, ou no centro)
     planB(d.meta);
@@ -1797,8 +1801,8 @@ function showAction(a){
     const v=a.params||{};
     const d=sheet('<h3>Mandar no WhatsApp?</h3><p><b>'+esc(v.nome||'')+'</b></p><p class="wa-msg">'+esc(v.text||'')+'</p><p>Você também pode dizer "confirmo".</p><div class="sheet-acts"><button class="btn" data-x="no">Cancelar</button><button class="btn pri" data-x="yes">Enviar</button></div>');
     d.addEventListener('click',async e=>{const x=e.target.dataset&&e.target.dataset.x;
-      if(x==='no'){try{await api('/api/actions/'+a.id+'/cancel')}catch{}closeSheet()}
-      if(x==='yes'){e.target.disabled=true;try{await api('/api/actions/'+a.id+'/confirm',{via:'touch'});closeSheet();flash('Enviado para '+(v.nome||'o contato')+'.')}catch(er){closeSheet();flash(er.message||'O WhatsApp não aceitou a mensagem.',true)}}});
+      if(x==='no'){if(a.web)window.__waPend=null;else try{await api('/api/actions/'+a.id+'/cancel')}catch{}closeSheet()}
+      if(x==='yes'){e.target.disabled=true;try{if(a.web){await api('/api/whatsapp/enviar',{token:a.web});window.__waPend=null}else await api('/api/actions/'+a.id+'/confirm',{via:'touch'});closeSheet();flash('Enviado para '+(v.nome||'o contato')+'.')}catch(er){closeSheet();flash(er.message||'O WhatsApp não aceitou a mensagem.',true)}}});
     return}
   if(a.kind==='pc_power'){
     const d=sheet('<h3>'+esc(a.preview||'Desligar o PC?')+'</h3><p>Salve o que estiver aberto. Dá para desistir dizendo "cancela o desligamento".</p><div class="sheet-acts"><button class="btn" data-x="no">Cancelar</button><button class="btn pri" data-x="yes">Confirmar</button></div>');
@@ -1884,21 +1888,24 @@ function webCards(){
     card1({ic:'drive',nm:'Google Drive',on:!!I.gdrive?.on,by:'Google',ds:I.gdrive?.on?'“Procura o contrato no Drive”, “meus arquivos recentes”':gOn?'Reconecte o Google marcando a caixa do Drive':g.configured?'Procura seus arquivos':soon,btn:I.gdrive?.on?ok:plus('/auth/google',!g.configured)})+
     card1({ic:'tasks',nm:'Google Tasks',on:!!I.gtasks?.on,by:'Google',ds:I.gtasks?.on?'“Põe comprar pão na lista”, “quais minhas tarefas?”':gOn?'Reconecte o Google marcando a caixa do Tasks':g.configured?'Tarefas e listas por voz':soon,btn:I.gtasks?.on?ok:plus('/auth/google',!g.configured)})+
     card1({ic:'music',nm:'Spotify',on:sOn,by:'Spotify',ds:sOn?esc(sp.message||'Conectado')+' · pula, pausa e diz o que está tocando':sp.configured?'Pula, pausa e diz o que está tocando (Premium)':soon,btn:sOn?okb('spx','Desconectar'):plus('/auth/spotify',!sp.configured)})+
-    '<p class="wsub">No app para Windows</p>'+
-    pc('wa','WhatsApp','Meta','Manda mensagens por voz')+pc('git','GitHub','GitHub','PRs, CI e issues')+pc('pen','Canva','Canva','Em breve')}
+    waCard(I.whatsapp||{state:'off'})+'<p class="wsub">No app para Windows</p>'+pc('git','GitHub','GitHub','PRs, CI e issues')+pc('pen','Canva','Canva','Em breve')}
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-x=wcity]')){togglePanel(false);openProfile(true)}});
 // WhatsApp: logo, cartão com os contatos e o teste da chave
 BR.wa='<circle cx="12" cy="12" r="10" fill="#25D366"/><path fill="#fff" d="M12 5.6a6.3 6.3 0 0 0-5.4 9.6l-.8 2.9 3-.8A6.3 6.3 0 1 0 12 5.6zm3.7 8.9c-.2.4-.9.8-1.3.8-.3 0-.7.1-2.3-.5-1.9-.8-3.1-2.7-3.2-2.8-.1-.1-.8-1-.8-2s.5-1.4.7-1.6c.2-.2.4-.2.5-.2h.4c.1 0 .3 0 .4.3l.6 1.4c.1.1.1.3 0 .4l-.2.3-.3.3c-.1.1-.2.2-.1.4.1.2.6 1 1.3 1.6.9.8 1.6 1 1.8 1.1.2.1.3.1.4-.1l.6-.7c.1-.2.3-.2.4-.1l1.3.6c.2.1.3.1.4.2 0 .1 0 .5-.1.6z"/>';
-function waCard(w){const on=w.state==='on',cs=w.contatos||[];
+function waCard(w){const on=w.state==='on',cs=S.state?.web?waList():(w.contatos||[]);
   const list=cs.length?'<ul class="wa-l">'+cs.map((c,i)=>'<li><b>'+esc(c.nome)+'</b><span>'+esc(c.numero)+'</span><button class="x" type="button" data-x="wadel" data-i="'+i+'" aria-label="Remover '+esc(c.nome)+'">×</button></li>').join('')+'</ul>':'<p class="s">Nenhum contato ainda.</p>';
   const form='<form class="waf" autocomplete="off"><input name="nome" maxlength="40" placeholder="Nome (ex.: Mãe)" aria-label="Nome do contato"><input name="numero" inputmode="tel" maxlength="22" placeholder="11 91234-5678" aria-label="Número com DDD"><button class="btn" type="submit">Adicionar</button></form>';
-  const how=on?'':'<p class="s">Para ligar: crie um app em developers.facebook.com com o produto WhatsApp e cole no .env o <b>WHATSAPP_TOKEN</b> e o <b>WHATSAPP_PHONE_ID</b>. Depois feche e abra o Jarvis.</p>';
+  const how=on?'':S.state?.web?'<p class="s">Ainda não liberado no site.</p>':'<p class="s">Para ligar: crie um app em developers.facebook.com com o produto WhatsApp e cole no .env o <b>WHATSAPP_TOKEN</b> e o <b>WHATSAPP_PHONE_ID</b>. Depois feche e abra o Jarvis.</p>';
   return card1({ic:'wa',nm:'WhatsApp',on,by:'Meta',ds:on?esc(w.message||'')+' · “manda no zap pro João que chego às 8”':'Manda mensagens por voz, sempre com a sua confirmação',
     extra:how+list+form+'<p class="msg" id="waMsg" role="status"></p>',btn:on?okb('watest','Testar a conexão'):'<span class="go" aria-disabled="true">+</span>'})}
 document.addEventListener('submit',async e=>{const f=e.target.closest&&e.target.closest('form.waf');if(!f)return;e.preventDefault();
+  if(S.state?.web){const n=f.nome.value.trim(),d=f.numero.value.replace(/\D/g,''),m=document.getElementById('waMsg');
+    if(!n||d.length<10){if(m){m.className='msg bad';m.textContent='Dê um nome e um número com DDD.'}return}
+    waSave([...waList().filter(c=>c.nome.toLowerCase()!==n.toLowerCase()),{nome:n.slice(0,40),numero:f.numero.value.trim().slice(0,22)}].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')).slice(0,100));renderInteg();return}
   try{S.integ=await api('/api/whatsapp/contatos',{nome:f.nome.value,numero:f.numero.value});renderInteg()}catch(er){const m=document.getElementById('waMsg');if(m){m.className='msg bad';m.textContent=er.message}}});
 document.addEventListener('click',async e=>{const b=e.target.closest&&e.target.closest('[data-x=wadel],[data-x=watest]');if(!b)return;const m=document.getElementById('waMsg');
   try{
+    if(b.dataset.x==='wadel'&&S.state?.web){const l=waList();l.splice(+b.dataset.i,1);waSave(l);renderInteg();return}
     if(b.dataset.x==='wadel'){S.integ=await req('DELETE','/api/whatsapp/contatos/'+b.dataset.i);renderInteg()}
     if(b.dataset.x==='watest'){if(m){m.className='msg';m.textContent='Testando…'}const r=await api('/api/whatsapp/teste',{});if(m){m.className='msg good';m.textContent='Funcionando: '+(r.nome?r.nome+' · ':'')+(r.numero||'número de envio ok')}}
   }catch(er){if(m){m.className='msg bad';m.textContent=er.message}}});

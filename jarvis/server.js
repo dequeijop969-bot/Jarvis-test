@@ -36,6 +36,7 @@ import * as github from './lib/github.js';
 import * as images from './lib/images.js';
 import { webTokens } from './lib/oauth.js';
 import { webTokenCtx } from './lib/webtokens.js';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import * as launcher from './lib/launcher.js';
 import * as mascot from './lib/mascot.js';
 import * as codewriter from './lib/codewriter.js';
@@ -665,6 +666,35 @@ function guard(req, url) {
    da chave. JARVIS_WEB_TRIAL=0 desliga. */
 const WEB_TRIAL = () => SITE_ONLY && process.env.JARVIS_WEB_TRIAL !== '0' && !!process.env.GEMINI_API_KEY;
 const WEB_KINDS = new Set(['money', 'futebol', 'news', 'drive', 'tasks', 'spotify']);
+/* WhatsApp no site: sai do número configurado na Vercel. Os contatos vêm do navegador da pessoa; o pedido de envio volta
+   assinado (preso à conta, vale 2 min), então confirmar funciona em qualquer instância. Limite por pessoa por dia
+   (JARVIS_WEB_WA_DIA, padrão 20); no modo de teste da Meta só os números da lista recebem. */
+const waKey = () => 'wa-web:' + (process.env.JARVIS_SESSION_SECRET || '');
+const waSeal = o => { const b = Buffer.from(JSON.stringify(o)).toString('base64url'); return b + '.' + createHmac('sha256', waKey()).update(b).digest('base64url'); };
+function waOpen(t, who) {
+  const [b, s] = String(t || '').split('.'); if (!b || !s) return null;
+  const good = createHmac('sha256', waKey()).update(b).digest('base64url');
+  if (s.length !== good.length || !timingSafeEqual(Buffer.from(s), Buffer.from(good))) return null;
+  try { const o = JSON.parse(Buffer.from(b, 'base64url').toString('utf8')); return o.u === who.id && o.exp > Date.now() ? o : null; } catch { return null; }
+}
+const waUsed = new Map();
+async function waSend(o, who) {
+  const day = new Date().toISOString().slice(0, 10), k = `${who.id}|${day}`, max = Math.max(1, Math.min(200, Number(process.env.JARVIS_WEB_WA_DIA) || 20));
+  if ((waUsed.get(k) || 0) >= max) throw new HttpError(429, `Limite de ${max} mensagens de WhatsApp por dia no site.`);
+  if (waUsed.size > 5000) waUsed.clear();
+  await whatsapp.send(o.to, o.text);
+  waUsed.set(k, (waUsed.get(k) || 0) + 1);
+}
+function webWhats(it, prof, who, list) {
+  const a = addressing(prof), rr = t => ({ ...integrationReply(t, 'WhatsApp'), meta: { provider: null, model: null, tier: 'local', degraded: false } });
+  if (!whatsapp.configured()) return rr(`O WhatsApp ainda não foi liberado no site, ${a.short}.`);
+  const contatos = (Array.isArray(list) ? list : []).slice(0, 100).map(c => ({ nome: String(c?.nome || '').replace(/[<>\x00-\x1f]/g, '').slice(0, 40), numero: whatsapp.normalize(c?.numero) })).filter(c => c.nome && c.numero);
+  const c = whatsapp.resolve(it.to, contatos);
+  if (!c) return rr(`Não achei "${it.to}" nos seus contatos do WhatsApp, ${a.short}. Cadastre em Ajustes, no cartão do WhatsApp, ou diga o número com DDD.`);
+  if (!it.text) return rr(`O que eu digo para ${c.nome}, ${a.short}?`);
+  const web = waSeal({ u: who.id, to: c.numero, nome: c.nome, text: it.text.slice(0, 1000), exp: Date.now() + 120_000 });
+  return { ...rr(`Mando para ${c.nome}: “${it.text}”? Diga "confirmo" ou toque em Enviar, ${a.short}.`), action: { id: 'web', kind: 'whatsapp_send', params: { nome: c.nome, text: it.text }, web } };
+}
 const WEB_MAIL = /\b(e-?mails?|gmail|caixa de entrada|inbox)\b/i;
 // Perfil da web: o que a pessoa guardou nos Ajustes (cabeçalho x-jarvis-perfil, JSON em base64), conferido campo a campo.
 // Sem nada guardado, o Jarvis a chama de "senhor" (dá para trocar em Ajustes > Perfil).
@@ -685,10 +715,11 @@ const WEB_INTEG = { web: true, gmail: { state: 'off', configured: false, message
 // Google e Spotify: o estado é o da pessoa (cookie dela), lido dentro do contexto da web.
 const NOT_YET = { state: 'off', configured: false, message: 'Ainda não liberado no site.' };
 const webInteg = who => ({ ...WEB_INTEG, conta: { on: true, name: who.name || '', email: who.email || '' },
+  whatsapp: whatsapp.configured() ? { state: 'on', configured: true, message: 'Pronto para enviar' } : NOT_YET,
   gmail: google.googleConfigured() ? google.googleStatus() : NOT_YET, spotify: spotify.configured() ? spotify.status() : NOT_YET,
   gdrive: { on: google.canDrive(), save: false }, gtasks: { on: google.canTasks() } });
 const WEB_IMG = /^\/api\/images\/(w[A-Za-z0-9_-]{8,3000}\.[A-Za-z0-9_-]{22})\/(thumb|file)$/;
-const WEB_PATHS = /^\/(app|index\.html|api\/(state|weather|geocode|profile|integrations|greeting|chat|tts|stt|mcp|ui\/(size|conversa))|auth\/(google|spotify)(\/callback|\/disconnect)?)$/;
+const WEB_PATHS = /^\/(app|index\.html|api\/(state|weather|geocode|profile|integrations|greeting|chat|tts|stt|mcp|ui\/(size|conversa)|whatsapp\/(teste|enviar))|auth\/(google|spotify)(\/callback|\/disconnect)?)$/;
 async function siteWeb(req, res, u, M) {
   const p = u.pathname;
   if (M === 'GET' && p === '/api/ui/events') { res.writeHead(204, SEC_HEADERS); res.end(); return true; }   // nada do PC aqui; 204 = o navegador não insiste
@@ -722,6 +753,13 @@ async function siteWebIn(req, res, u, M, who) {
     return true;
   }
   if (M === 'POST' && p === '/auth/spotify/disconnect') { spotify.disconnect(); send(res, 200, webInteg(who)); return true; }
+  if (M === 'POST' && p === '/api/whatsapp/teste') { try { send(res, 200, await whatsapp.test()); } catch (e) { throw new HttpError(e.code || 502, e.message); } return true; }
+  if (M === 'POST' && p === '/api/whatsapp/enviar') {
+    const o = waOpen((await readBody(req)).token, who);
+    if (!o) throw new HttpError(410, 'Esse pedido expirou. Peça de novo.');
+    try { await waSend(o, who); } catch (e) { throw e instanceof HttpError ? e : new HttpError(e.code || 502, e.message); }
+    send(res, 200, { ok: true, nome: o.nome }); return true;
+  }
   // Fotos e escudos: o ID assinado carrega a própria URL, então qualquer instância da Vercel serve a imagem.
   const im = p.match(WEB_IMG);
   if (M === 'GET' && im) {
@@ -770,6 +808,16 @@ async function siteWebIn(req, res, u, M, who) {
     const b = await readBody(req, 60_000);
     if (typeof b.text !== 'string' || !b.text.trim()) throw new HttpError(400, 'Escreva ou fale alguma coisa.');
     const text = b.text.slice(0, 1000), it = detectIntent(text, {});
+    if (it?.kind === 'whatsapp') { send(res, 200, webWhats(it, prof, who, b.wa)); return true; }
+    if ((it?.kind === 'confirm' || it?.kind === 'cancel') && b.pend) {
+      const o = waOpen(b.pend, who), a = addressing(prof), rr = t => ({ ...integrationReply(t, 'WhatsApp'), meta: { provider: null, model: null, tier: 'local', degraded: false } });
+      if (o && it.kind === 'cancel') { send(res, 200, { ...rr(`Cancelado, ${a.short}. Nada foi enviado.`), cancelled: true }); return true; }
+      if (o) {
+        try { await waSend(o, who); send(res, 200, { ...rr(`Enviado para ${o.nome}, ${a.short}.`), whatsapp: { nome: o.nome } }); }
+        catch (e) { send(res, 200, rr(`${e.message || 'O WhatsApp não aceitou a mensagem.'}`)); }
+        return true;
+      }
+    }
     if (it && WEB_KINDS.has(it.kind)) {
       const r = await handleIntent(it, prof, null, text).catch(() => null);
       if (r) { send(res, 200, r); return true; }

@@ -159,7 +159,7 @@ try {
   const all = [html, ...bodies, ...logs].join('\n');
   for (const s of SECRETS) assert.ok(!all.includes(s), `vazou: ${s.slice(0, 6)}…`);
   // Storage só para o perfil da web (o servidor do site não guarda nada); chave nenhuma passa por lá.
-  assert.ok(!/sessionStorage/.test(html) && (html.match(/localStorage\.\w+\([^)]*/g) || []).every(u => /^localStorage\.\w+\(WP_KEY/.test(u)), 'front só guarda o perfil da web');
+  assert.ok(!/sessionStorage/.test(html) && (html.match(/localStorage\.\w+\([^)]*/g) || []).every(u => /^localStorage\.\w+\((WP_KEY|WA_KEY)/.test(u)), 'front só guarda o perfil da web');
   ok('9. nenhuma chave no front, nas respostas ou nos logs', `${bodies.length} respostas e ${logs.length} linhas de log varridas`);
   console.info('e2e: ok');
 } finally {

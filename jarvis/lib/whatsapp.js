@@ -42,12 +42,11 @@ export function removeContact(i) {
   return list;
 }
 // "João", "o joão", "joao silva" ou um número falado/digitado.
-export function resolve(to) {
+export function resolve(to, list = contacts()) {
   const d = normalize(to);
   if (d && String(to).replace(/\D/g, '').length >= 10) return { nome: pretty(d), numero: d };
   const q = fold(to).replace(/^(o|a|os|as|meu|minha|pro|pra|para) /, '');
   if (!q) return null;
-  const list = contacts();
   return list.find(c => fold(c.nome) === q) || list.find(c => fold(c.nome).split(' ')[0] === q) || list.find(c => fold(c.nome).startsWith(q)) || null;
 }
 

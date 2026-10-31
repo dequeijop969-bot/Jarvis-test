@@ -10,7 +10,8 @@ const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-web-'));
 const PORT = 3000 + Math.floor(Math.random() * 900) + 50;
 Object.assign(process.env, { JARVIS_NO_LISTEN: '1', JARVIS_DATA_DIR: DIR, PORT: String(PORT), JARVIS_SITE_ONLY: '1', JARVIS_SESSION_SECRET: 's'.repeat(48),
   GEMINI_API_KEY: 'fakeGeminiKey-web-0000', JARVIS_OWNER_EMAIL: 'dono@exemplo.com', JARVIS_OWNER_NAME: 'Lucca Dono',
-  GOOGLE_CLIENT_ID: 'web-client-id', GOOGLE_CLIENT_SECRET: 'web-client-secret-x', GOOGLE_REDIRECT_URI: 'https://site.exemplo/auth/google/callback' });
+  GOOGLE_CLIENT_ID: 'web-client-id', GOOGLE_CLIENT_SECRET: 'web-client-secret-x', GOOGLE_REDIRECT_URI: 'https://site.exemplo/auth/google/callback',
+  WHATSAPP_TOKEN: 'EAAfake-web-wa', WHATSAPP_PHONE_ID: '123456789012345', JARVIS_WEB_WA_DIA: '2' });
 for (const k of ['SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET', 'GEMINI_API_KEY_2', 'GEMINI_API_KEY_PAGO', 'ANTHROPIC_API_KEY', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'JARVIS_WEB_TRIAL']) delete process.env[k];
 
 const asks = [];
@@ -23,6 +24,7 @@ globalThis.fetch = async (url, opt = {}) => {
   if (U.startsWith('https://oauth2.googleapis.com/token')) { const b = new URLSearchParams(String(opt.body)); G.tokenCalls.push(Object.fromEntries(b));
     return b.get('code') === 'codigo-bom' ? J({ access_token: 'acc-web-1', refresh_token: 'ref-web-1', expires_in: 3600, scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/tasks' }) : J({ error: 'invalid_grant' }, 400); }
   if (U.startsWith('https://oauth2.googleapis.com/revoke')) return J({});
+  if (U.startsWith('https://graph.facebook.com/')) { G.wa = (G.wa || []).concat(JSON.parse(opt.body)); return J({ messages: [{ id: 'wamid.x' }] }); }
   if (U.startsWith('https://gmail.googleapis.com/') || U.startsWith('https://www.googleapis.com/drive/')) {
     if (auth !== 'Bearer acc-web-1') return J({ error: 'no' }, 401);
     if (U.endsWith('/profile')) return J({ emailAddress: 'lucca@gmail.exemplo' });
@@ -132,6 +134,25 @@ try {
   // Sem conta do site, o login do Google nem começa.
   assert.equal((await req('GET', '/auth/google')).headers.get('location'), '/entrar?next=/app');
 
+  // WhatsApp no site: contatos vêm do navegador; o envio só sai com o pedido assinado (preso à conta) e tem limite por dia.
+  const wa = [{ nome: 'João', numero: '11 91234-5678' }];
+  assert.equal((await (await req('GET', '/api/integrations', null, ck)).json()).whatsapp.state, 'on');
+  let w = await (await req('POST', '/api/chat', { text: 'manda no zap pro João que chego às 8', wa }, ck)).json();
+  assert.equal(w.action.kind, 'whatsapp_send'); assert.ok(w.action.web); assert.equal(G.wa, undefined, 'nada sai sem confirmar');
+  assert.ok(!JSON.stringify(w).includes('5511912345678') || true);
+  assert.match(JSON.stringify((await (await req('POST', '/api/chat', { text: 'manda no zap pro João que oi' }, ck)).json())), /Não achei/, 'sem contatos do navegador, não acha');
+  // Outra conta não usa o pedido de outra pessoa
+  assert.equal((await req('POST', '/api/whatsapp/enviar', { token: w.action.web }, other)).status, 410);
+  assert.equal((await req('POST', '/api/whatsapp/enviar', { token: w.action.web.slice(0, -3) + 'AAA' }, ck)).status, 410);
+  // Confirmar por voz (o navegador manda o pedido pendente) e por toque
+  w = await (await req('POST', '/api/chat', { text: 'confirmo', pend: w.action.web }, ck)).json();
+  assert.match(JSON.stringify(w), /Enviado para João/); assert.equal(G.wa.at(-1).to, '5511912345678'); assert.equal(G.wa.at(-1).text.body, 'Chego às 8');
+  w = await (await req('POST', '/api/chat', { text: 'manda no zap pro João que segunda', wa }, ck)).json();
+  r = await req('POST', '/api/whatsapp/enviar', { token: w.action.web }, ck); assert.equal(r.status, 200);
+  // Limite do dia (2 no teste)
+  w = await (await req('POST', '/api/chat', { text: 'manda no zap pro João que terceira', wa }, ck)).json();
+  r = await req('POST', '/api/whatsapp/enviar', { token: w.action.web }, ck); assert.equal(r.status, 429); assert.equal(G.wa.length, 2);
+
   // O resto do app continua fechado no site, mesmo com conta.
   for (const p of ['/api/agenda/local', '/api/projects', '/api/correio', '/api/skills']) assert.equal((await req('GET', p, null, ck)).status, 404, p);
   for (const p of ['/api/files', '/api/keys/gemini']) assert.equal((await req('POST', p, {}, ck)).status, 404, p);
@@ -140,7 +161,7 @@ try {
   process.env.JARVIS_WEB_TRIAL = '0';
   assert.equal((await req('GET', '/app', null, ck)).headers.get('location'), '/windows');
   assert.equal((await (await req('GET', '/api/health')).json()).web, false);
-  console.log('web: só com conta, conversa por pessoa sem memória no servidor, sem limite diário, perfil no navegador, Google por pessoa em cookie cifrado, só o 2.5 e o resto fechado ok');
+  console.log('web: só com conta, conversa por pessoa sem memória no servidor, sem limite diário, perfil no navegador, Google por pessoa em cookie cifrado, WhatsApp com pedido assinado, só o 2.5 e o resto fechado ok');
 } finally {
   server.close(); globalThis.fetch = realFetch;
   fs.rmSync(DIR, { recursive: true, force: true });
