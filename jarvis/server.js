@@ -27,6 +27,7 @@ import * as money from './lib/money.js';
 import * as football from './lib/football.js';
 import * as pcctl from './lib/pccontrol.js';
 import * as whatsapp from './lib/whatsapp.js';
+import * as cloudrem from './lib/cloudrem.js';
 import * as gdrive from './lib/gdrive.js';
 import * as gtasks from './lib/gtasks.js';
 let lastDrive = null;   // última lista do Drive mostrada ("abre o primeiro")
@@ -223,7 +224,7 @@ setInterval(() => {
     for (const x of reminders.due()) {
       mascot.uiEmit('lembrete', { id: x.id, kind: x.kind, text: x.text });
       const me = whatsapp.myNumber();
-      if (me) whatsapp.send(me, `⏰ Lembrete do Jarvis: ${x.text}`).catch(e => log.warn('[whatsapp] lembrete não saiu:', e.message));
+      if (me && !x.cloud) whatsapp.send(me, `⏰ Lembrete do Jarvis: ${x.text}`).catch(e => log.warn('[whatsapp] lembrete não saiu:', e.message));
       mascot.emit('emocao', { nome: 'surpreso', segundos: 4 });
       log.info(`[lembrete] ${x.kind}: ${x.text}`);
     }
@@ -377,10 +378,13 @@ async function handleIntent(it, p, screen, text = '') {
     }
     if (it.op === 'cancelar') {
       const gone = reminders.cancel(it.what, it.all);
+      for (const x of gone) if (x.cloud) conta.cancelarLembreteNuvem(x.cloud).catch(() => {});
       return rr(gone.length ? `Cancelado, ${a.short}: ${gone.map(x => x.kind === 'alarme' ? 'o alarme' : x.text).join(', ')}.` : `Não achei esse lembrete, ${a.short}.`);
     }
     if (it.op === 'faltou_hora') return rr(`Para quando, ${a.short}? Diga, por exemplo, "${it.type === 'alarme' ? 'alarme às 7' : `me lembra de ${it.text || 'beber água'} às 15h`}" ou "daqui a 20 minutos".`);
     const item = reminders.add({ kind: it.type, text: it.text, at: it.at });
+    const me = whatsapp.myNumber();
+    if (me && conta.active()) conta.lembreteNuvem(it.type === 'alarme' ? 'Alarme' : it.text, item.at, me).then(id => reminders.setCloud(item.id, id)).catch(e => log.warn('[lembretes] não guardei no site:', e.message));
     const what = it.type === 'timer' ? it.text.toLowerCase() : it.type === 'alarme' ? 'alarme' : `lembrete de ${it.text}`;
     return { ...rr(it.type === 'timer' ? `${it.text} começando agora, ${a.short}. Eu aviso quando acabar.` : `Anotado, ${a.short}: ${what} ${reminders.when(item.at)}. Eu aviso, mesmo com o app minimizado.`), reminder: item };
   }
@@ -695,11 +699,29 @@ function webWhats(it, prof, who, list) {
   const web = waSeal({ u: who.id, to: c.numero, nome: c.nome, text: it.text.slice(0, 1000), exp: Date.now() + 120_000 });
   return { ...rr(`Mando para ${c.nome}: “${it.text}”? Diga "confirmo" ou toque em Enviar, ${a.short}.`), action: { id: 'web', kind: 'whatsapp_send', params: { nome: c.nome, text: it.text }, web } };
 }
+// Lembretes no site: vão para o banco e chegam no WhatsApp da pessoa (número em Ajustes > WhatsApp).
+async function webReminder(it, prof, who) {
+  const a = addressing(prof), rr = t => ({ ...integrationReply(t, 'Lembretes'), meta: { provider: null, model: null, tier: 'local', degraded: false } });
+  if (!cloudrem.on()) return rr(`Lembretes no site ainda não foram liberados, ${a.short}. No app para Windows eles já funcionam.`);
+  try {
+    if (it.op === 'listar') { const l = await cloudrem.list(who.id); return rr(l.length ? `Você tem ${l.length}: ${l.slice(0, 5).map(x => `${x.texto} ${reminders.when(x.quando)}`).join('; ')}, ${a.short}.` : `Nenhum lembrete marcado, ${a.short}.`); }
+    if (it.op === 'cancelar') {
+      const l = await cloudrem.list(who.id), w = fold(it.what || '');
+      const hit = it.all && !w ? l : l.filter(x => !w || fold(x.texto).includes(w)).slice(0, it.all ? 99 : 1);
+      for (const x of hit) await cloudrem.cancel(who.id, x.id);
+      return rr(hit.length ? `Cancelado, ${a.short}: ${hit.map(x => x.texto).join(', ')}.` : `Não achei esse lembrete, ${a.short}.`);
+    }
+    if (it.op === 'faltou_hora') return rr(`Para quando, ${a.short}? Diga, por exemplo, "me lembra de ${it.text || 'beber água'} às 15h".`);
+    if (!prof.whatsapp) return rr(`Para eu te avisar mesmo com o site fechado, coloque o seu número em Ajustes, no cartão do WhatsApp, ${a.short}.`);
+    const texto = it.type === 'alarme' ? 'Alarme' : it.text, r = await cloudrem.add(who.id, { texto, quando: it.at, numero: prof.whatsapp });
+    return { ...rr(`Anotado, ${a.short}: ${it.type === 'alarme' ? 'alarme' : `lembrete de ${texto}`} ${reminders.when(r.quando)}. Aviso no seu WhatsApp, mesmo com o site fechado.`) };
+  } catch (e) { return rr(e.message || 'Não consegui guardar o lembrete agora.'); }
+}
 const WEB_MAIL = /\b(e-?mails?|gmail|caixa de entrada|inbox)\b/i;
 // Perfil da web: o que a pessoa guardou nos Ajustes (cabeçalho x-jarvis-perfil, JSON em base64), conferido campo a campo.
 // Sem nada guardado, o Jarvis a chama de "senhor" (dá para trocar em Ajustes > Perfil).
 function webPatch(p, raw) {
-  if (raw && typeof raw === 'object') for (const k of ['name', 'address', 'lang', 'city', 'about']) if (k in raw) {
+  if (raw && typeof raw === 'object') for (const k of ['name', 'address', 'lang', 'city', 'about', 'whatsapp']) if (k in raw) {
     try { p = cleanProfile({ [k]: raw[k] }, p); } catch { /* campo inválido fica de fora */ }
   }
   return { ...p, level: '2.5' };
@@ -779,7 +801,7 @@ async function siteWebIn(req, res, u, M, who) {
   // Ajustes > Perfil: o servidor só confere e devolve; quem guarda é o navegador.
   if (M === 'POST' && p === '/api/profile') {
     const b = await readBody(req), patch = {};
-    for (const k of ['name', 'address', 'city', 'lang', 'about']) if (k in b) patch[k] = b[k];
+    for (const k of ['name', 'address', 'city', 'lang', 'about', 'whatsapp']) if (k in b) patch[k] = b[k];
     let out; try { out = cleanProfile(patch, prof); } catch (e) { throw new HttpError(e.code || 400, e.message); }
     send(res, 200, { profile: { ...out, level: '2.5' }, needsProfile: false }); return true;
   }
@@ -809,6 +831,7 @@ async function siteWebIn(req, res, u, M, who) {
     if (typeof b.text !== 'string' || !b.text.trim()) throw new HttpError(400, 'Escreva ou fale alguma coisa.');
     const text = b.text.slice(0, 1000), it = detectIntent(text, {});
     if (it?.kind === 'whatsapp') { send(res, 200, webWhats(it, prof, who, b.wa)); return true; }
+    if (it?.kind === 'reminder') { send(res, 200, await webReminder(it, prof, who)); return true; }
     if ((it?.kind === 'confirm' || it?.kind === 'cancel') && b.pend) {
       const o = waOpen(b.pend, who), a = addressing(prof), rr = t => ({ ...integrationReply(t, 'WhatsApp'), meta: { provider: null, model: null, tier: 'local', degraded: false } });
       if (o && it.kind === 'cancel') { send(res, 200, { ...rr(`Cancelado, ${a.short}. Nada foi enviado.`), cancelled: true }); return true; }
@@ -868,6 +891,26 @@ async function siteApp(req, res, u, M) {
     // O passe só vai para o próprio computador da pessoa (localhost), nunca para outro endereço.
     if (p === '/conectar-app/ok') { redirect(res, `http://localhost:${porta}/auth/conta/volta?state=${st}&token=${users.appToken(who)}`); return true; }
     send(res, 200, connectPage(who, st, porta), 'text/html; charset=utf-8', { 'Content-Security-Policy': CSP_SITE }); return true;
+  }
+  if (M === 'POST' && p === '/api/nuvem/lembrete') {
+    const who = users.appUser(req);
+    if (!who) throw new HttpError(401, 'Passe do app inválido ou vencido. Entre de novo pelo app.');
+    if (!cloudrem.on()) throw new HttpError(503, 'Lembretes na nuvem ainda não configurados no site.');
+    const b = await readBody(req);
+    try { send(res, 200, await cloudrem.add(who.id, b)); } catch (e) { throw new HttpError(e.code || 502, e.message); }
+    return true;
+  }
+  if (M === 'DELETE' && /^\/api\/nuvem\/lembrete\/[0-9a-f-]{36}$/i.test(p)) {
+    const who = users.appUser(req);
+    if (!who) throw new HttpError(401, 'Passe do app inválido ou vencido. Entre de novo pelo app.');
+    try { await cloudrem.cancel(who.id, p.split('/').pop()); send(res, 200, { ok: true }); } catch (e) { throw new HttpError(e.code || 502, e.message); }
+    return true;
+  }
+  // Agendador (cron-job.org ou outro) a cada minuto: manda os lembretes vencidos pelo WhatsApp.
+  if ((M === 'GET' || M === 'POST') && p === '/api/cron/lembretes') {
+    if (!cloudrem.cronOk(req)) throw new HttpError(401, 'Não autorizado.');
+    if (!cloudrem.on()) throw new HttpError(503, 'Lembretes na nuvem não configurados.');
+    send(res, 200, await cloudrem.run()); return true;
   }
   if (M === 'GET' && p === '/api/nuvem/eu') {
     const who = users.appUser(req);

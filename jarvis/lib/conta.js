@@ -39,6 +39,19 @@ export async function finish(state, token) {
 }
 export function logout() { st = {}; save(); return status(); }
 
+// Lembretes guardados no site (Supabase): ele manda o WhatsApp na hora, mesmo com este PC desligado.
+async function nuvem(method, p, body) {
+  const s = load();
+  if (!s.token) throw Object.assign(new Error('Sem conta conectada.'), { code: 401 });
+  const r = await CONTA.fetch(`${CONTA.site()}${p}`, { method, signal: AbortSignal.timeout(10_000),
+    headers: { authorization: `Bearer ${s.token}`, 'content-type': 'application/json', 'x-jarvis': '1' }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || `O site respondeu ${r.status}.`), { code: r.status });
+  return j;
+}
+export const lembreteNuvem = (texto, quando, numero) => nuvem('POST', '/api/nuvem/lembrete', { texto, quando, numero }).then(j => j.id);
+export const cancelarLembreteNuvem = id => nuvem('DELETE', '/api/nuvem/lembrete/' + encodeURIComponent(id));
+
 // Pedido ao Gemini pelo site (mesmo formato do generateContent). Devolve a Response do site, igual à do Google.
 export async function gemini(model, request, timeoutMs) {
   const s = load();

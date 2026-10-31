@@ -54,6 +54,7 @@ export function cleanProfile(input, current) {
     };
     if (p.about.inicio != null && p.about.fim != null && p.about.fim <= p.about.inicio) { p.about.inicio = null; p.about.fim = null; }
   }
+  if ('whatsapp' in input) { const d = String(input.whatsapp || '').replace(/\D/g, ''); p.whatsapp = d.length >= 10 && d.length <= 15 ? d : ''; }
   if ('launcher' in input) p.launcher = input.launcher !== false;
   if ('mode' in input) p.mode = input.mode === 'code' ? 'code' : 'talk';   // Talk (conversa) ou Code (ações no PC)
   if ('gmailInvite' in input && ['pending', 'skipped', 'reminded', 'connected'].includes(input.gmailInvite)) p.gmailInvite = input.gmailInvite;

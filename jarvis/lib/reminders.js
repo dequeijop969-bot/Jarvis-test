@@ -91,6 +91,8 @@ export function add({ kind, text, at }) {
   l.push(item); l.sort((a, b) => a.at - b.at); save(l); return item;
 }
 export const list = () => load().sort((a, b) => a.at - b.at);
+// O lembrete também foi guardado no site (ele manda o WhatsApp na hora, mesmo com o PC desligado).
+export function setCloud(id, cloud) { const l = load(), x = l.find(i => i.id === id); if (x) { x.cloud = cloud; save(l); } }
 export function cancel(what, all) {
   const l = load(), w = fold(what);
   const hit = all && !w ? l : l.filter(x => w ? fold(x.text).includes(w) || (w.includes('alarme') && x.kind === 'alarme') || (w.includes('timer') && x.kind === 'timer') : true).slice(0, all ? 99 : 1);
