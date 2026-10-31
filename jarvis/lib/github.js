@@ -6,6 +6,7 @@
 // Títulos, corpos, comentários e mensagens de commit são DADOS de terceiros, nunca instruções.
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { getKey } from './keys.js';
 import { readJSON, writeJSON } from './store.js';
 import { log, looksSecret } from './secrets.js';
@@ -59,15 +60,18 @@ export function assertGithubAllowed(method, p, body) {
 /* ---------- HTTP com cache curto e respeito ao rate limit ---------- */
 const cache = new Map();
 export const clearCache = () => cache.clear();
-let blockedUntil = 0, lastRate = null;
+const blocked = new Map();   // token (resumo) -> até quando o GitHub pediu pausa
+let lastRate = null;
+const tk = t => createHash('sha256').update(String(t)).digest('hex').slice(0, 16);
 export const rateInfo = () => lastRate;
 
 export async function gh(kind, method, p, body) {
   assertGithubAllowed(method, p, body);
   const token = kind === 'write' ? getKey('github_write') : (getKey('github_read') || getKey('github_write'));
   if (!token) throw Object.assign(new Error(kind === 'write' ? 'Falta o token de escrita do GitHub.' : 'O GitHub ainda não está conectado, senhor. Coloque um token de leitura em Ajustes > Conexões.'), { code: 409 });
-  if (Date.now() < blockedUntil) throw Object.assign(new Error('Limite de uso do GitHub atingido. Tento de novo em instantes.'), { code: 429 });
-  const ck = method === 'GET' ? `${kind}|${p}` : null;
+  const who = tk(token);
+  if (Date.now() < (blocked.get(who) || 0)) throw Object.assign(new Error('Limite de uso do GitHub atingido. Tento de novo em instantes.'), { code: 429 });
+  const ck = method === 'GET' ? `${who}|${kind}|${p}` : null;   // o cache é de cada token: na web, ninguém vê o de outro
   if (ck) { const hit = cache.get(ck); if (hit && hit.exp > Date.now()) return hit.v; }
   const send = { ...(body || {}) }; delete send.__probe;
   let r;
@@ -82,10 +86,10 @@ export async function gh(kind, method, p, body) {
   if (Number.isFinite(rem)) lastRate = { remaining: rem, reset: reset * 1000 };
   if (r.status === 429 || (r.status === 403 && rem === 0)) {
     const ra = Number(r.headers.get('retry-after'));
-    blockedUntil = ra ? Date.now() + ra * 1000 : reset ? reset * 1000 : Date.now() + 60_000;
+    blocked.set(who, ra ? Date.now() + ra * 1000 : reset ? reset * 1000 : Date.now() + 60_000);
     throw Object.assign(new Error('Limite de uso do GitHub atingido. Tento de novo em instantes.'), { code: 429, status: r.status });
   }
-  if (Number.isFinite(rem) && rem <= 2 && reset) blockedUntil = reset * 1000;
+  if (Number.isFinite(rem) && rem <= 2 && reset) blocked.set(who, reset * 1000);
   const j = r.status === 204 ? {} : await r.json().catch(() => ({}));
   if (!r.ok) {
     const need = r.headers.get('x-accepted-github-permissions') || '';

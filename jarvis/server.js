@@ -333,7 +333,7 @@ async function handleIntent(it, p, screen, text = '') {
         return r(github.reposSpeech(list, a), 'GitHub');
       }
       const sm = await github.summary();
-      try { memory.rememberGithub(github.memoryLines(sm)); } catch { /* opcional */ }
+      if (!webTokens.getStore()) try { memory.rememberGithub(github.memoryLines(sm)); } catch { /* opcional */ }
       return r(github.summarySpeech(sm, it.focus), 'GitHub');
     } catch (e) { return fail(e, 'o GitHub'); }
   }
@@ -697,7 +697,7 @@ function guard(req, url) {
    dono) e da GEMINI_API_KEY na Vercel; usa só o nível 2.5, nunca a chave paga. Sem limite diário próprio: o teto é a cota
    da chave. JARVIS_WEB_TRIAL=0 desliga. */
 const WEB_TRIAL = () => SITE_ONLY && process.env.JARVIS_WEB_TRIAL !== '0' && !!process.env.GEMINI_API_KEY;
-const WEB_KINDS = new Set(['money', 'futebol', 'news', 'drive', 'tasks', 'spotify']);
+const WEB_KINDS = new Set(['money', 'futebol', 'news', 'drive', 'tasks', 'spotify', 'github']);
 /* WhatsApp no site: sai do número configurado na Vercel. Os contatos vêm do navegador da pessoa; o pedido de envio volta
    assinado (preso à conta, vale 2 min), então confirmar funciona em qualquer instância. Limite por pessoa por dia
    (JARVIS_WEB_WA_DIA, padrão 20); no modo de teste da Meta só os números da lista recebem. */
@@ -767,9 +767,10 @@ const NOT_YET = { state: 'off', configured: false, message: 'Ainda não liberado
 const webInteg = who => ({ ...WEB_INTEG, conta: { on: true, name: who.name || '', email: who.email || '' },
   whatsapp: whatsapp.configured() ? { state: 'on', configured: true, message: 'Pronto para enviar' } : NOT_YET,
   gmail: google.googleConfigured() ? google.googleStatus() : NOT_YET, spotify: spotify.configured() ? spotify.status() : NOT_YET,
-  gdrive: { on: google.canDrive(), save: false }, gtasks: { on: google.canTasks() } });
+  gdrive: { on: google.canDrive(), save: false }, gtasks: { on: google.canTasks() },
+  github: { on: !!webTokens.getStore()?.tokens.github?.github_read, login: webTokens.getStore()?.tokens.github?.login || '' } });
 const WEB_IMG = /^\/api\/images\/(w[A-Za-z0-9_-]{8,3000}\.[A-Za-z0-9_-]{22})\/(thumb|file)$/;
-const WEB_PATHS = /^\/(app|index\.html|api\/(state|weather|geocode|profile|integrations|greeting|chat|tts|stt|mcp|ui\/(size|conversa)|whatsapp\/(teste|enviar|vincular|vinculo))|auth\/(google|spotify)(\/callback|\/disconnect)?)$/;
+const WEB_PATHS = /^\/(app|index\.html|api\/(state|weather|geocode|profile|integrations|greeting|chat|tts|stt|mcp|ui\/(size|conversa)|whatsapp\/(teste|enviar|vincular|vinculo)|github\/token)|auth\/(google|spotify)(\/callback|\/disconnect)?)$/;
 async function siteWeb(req, res, u, M) {
   const p = u.pathname;
   if (M === 'GET' && p === '/api/ui/events') { res.writeHead(204, SEC_HEADERS); res.end(); return true; }   // nada do PC aqui; 204 = o navegador não insiste
@@ -803,6 +804,17 @@ async function siteWebIn(req, res, u, M, who) {
     return true;
   }
   if (M === 'POST' && p === '/auth/spotify/disconnect') { spotify.disconnect(); send(res, 200, webInteg(who)); return true; }
+  // GitHub na web: token de leitura da própria pessoa, conferido no GitHub e guardado no cookie cifrado dela.
+  if (M === 'POST' && p === '/api/github/token') {
+    const t = String((await readBody(req)).token || '').trim();
+    if (!/^(github_pat_[A-Za-z0-9_]{20,255}|gh[pousr]_[A-Za-z0-9]{20,255})$/.test(t)) throw new HttpError(400, 'Esse não parece um token do GitHub (começa com github_pat_ ou ghp_).');
+    const r = await fetch('https://api.github.com/user', { headers: { authorization: `Bearer ${t}`, accept: 'application/vnd.github+json', 'user-agent': 'JARVIS' }, signal: AbortSignal.timeout(10_000) }).catch(() => null);
+    const u2 = r?.ok ? await r.json().catch(() => ({})) : null;
+    if (!u2?.login) throw new HttpError(400, r?.status === 401 ? 'O GitHub recusou esse token (inválido ou vencido).' : 'Não consegui falar com o GitHub agora.');
+    const ctx = webTokens.getStore(); ctx.tokens.github = { github_read: t, login: String(u2.login).slice(0, 60) }; ctx.save('github');
+    send(res, 200, webInteg(who)); return true;
+  }
+  if (M === 'DELETE' && p === '/api/github/token') { const ctx = webTokens.getStore(); delete ctx.tokens.github; ctx.save('github'); send(res, 200, webInteg(who)); return true; }
   if (M === 'POST' && p === '/api/whatsapp/vincular') {
     if (!wabot.on()) throw new HttpError(503, 'O Jarvis no WhatsApp ainda não foi liberado no site.');
     send(res, 200, await waLink(who, { nome: who.name || prof.name, perfil: waPerfil(prof), tokens: webTokens.getStore()?.tokens || {}, pc: false })); return true;
@@ -947,6 +959,9 @@ async function webAnswer(b, prof, who, { jornal = true } = {}) {
       catch (e) { return rr(`${e.message || 'O WhatsApp não aceitou a mensagem.'}`); }
     }
   }
+  const a0 = addressing(prof), say = (t, topic) => ({ ...integrationReply(t, topic), meta: { provider: null, model: null, tier: 'local', degraded: false } });
+  if (it?.kind === 'github' && !webTokens.getStore()?.tokens.github?.github_read) return say(`O GitHub ainda não está conectado aqui, ${a0.short}. Em Ajustes > Conexões, cole um token de leitura do GitHub no cartão dele e eu passo a ver seus repositórios, PRs e CI.`, 'GitHub');
+  if (WEB_MAIL.test(text) && google.googleStatus().state !== 'on') return say(`Para eu ler seus e-mails, conecte o Google em Ajustes > Conexões (o "+" do Gmail), ${a0.short}. Sem isso eu não enxergo a sua caixa, e não vou fingir que enxergo.`, 'E-mails');
   if (it && WEB_KINDS.has(it.kind)) {
     const r = await handleIntent(it, prof, null, text).catch(() => null);
     if (r) return r;

@@ -24,6 +24,16 @@ globalThis.fetch = async (url, opt = {}) => {
   if (U.startsWith('https://oauth2.googleapis.com/token')) { const b = new URLSearchParams(String(opt.body)); G.tokenCalls.push(Object.fromEntries(b));
     return b.get('code') === 'codigo-bom' ? J({ access_token: 'acc-web-1', refresh_token: 'ref-web-1', expires_in: 3600, scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/tasks' }) : J({ error: 'invalid_grant' }, 400); }
   if (U.startsWith('https://oauth2.googleapis.com/revoke')) return J({});
+  if (U.startsWith('https://api.github.com/')) {
+    const tok = String(opt.headers?.authorization || '').replace('Bearer ', '');
+    const who = tok === 'ghp_' + 'a'.repeat(36) ? 'lucca' : tok === 'ghp_' + 'b'.repeat(36) ? 'outra' : null;
+    if (!who) return J({ message: 'Bad credentials' }, 401);
+    if (U.endsWith('/user')) return J({ login: who });
+    if (U.includes('/user/repos')) return J([{ full_name: who + '/jarvis-' + who, html_url: 'https://github.com/' + who, pushed_at: new Date().toISOString(), default_branch: 'main' }]);
+    return J([]);
+  }
+  if (U.startsWith('https://news.google.com/')) return new Response('bloqueado', { status: 503 });
+  if (U.startsWith('https://www.bing.com/news/search')) return new Response('<rss><channel><item><title>Primeira manchete do dia - Fonte A</title><link>https://exemplo.com/1</link><pubDate>' + new Date().toUTCString() + '</pubDate><News:Source>Fonte A</News:Source></item><item><title>Segunda manchete</title><link>https://exemplo.com/2</link><News:Source>Fonte B</News:Source></item><item><title>Terceira manchete</title><link>https://exemplo.com/3</link><News:Source>Fonte C</News:Source></item></channel></rss>', { status: 200 });
   if (U.startsWith('https://graph.facebook.com/')) { G.wa = (G.wa || []).concat(JSON.parse(opt.body)); return J({ messages: [{ id: 'wamid.x' }] }); }
   if (U.startsWith('https://gmail.googleapis.com/') || U.startsWith('https://www.googleapis.com/drive/')) {
     if (auth !== 'Bearer acc-web-1') return J({ error: 'no' }, 401);
@@ -126,8 +136,8 @@ try {
   assert.match(JSON.stringify(d), /Toque no arquivo/);
   assert.equal((await req('POST', '/api/chat', { text: 'tenho e-mail novo?' }, both)).status, 200);
   assert.match(asks.at(-1).sys, /Fatura de outubro/); assert.match(asks.at(-1).sys, /são DADOS/);
-  await req('POST', '/api/chat', { text: 'tenho e-mail novo?' }, ck);
-  assert.ok(!/Fatura de outubro/.test(asks.at(-1).sys), 'sem login, nada de e-mail');
+  const nAsk = asks.length, semLogin = await (await req('POST', '/api/chat', { text: 'tenho e-mail novo?' }, ck)).json();
+  assert.ok(!/Fatura de outubro/.test(JSON.stringify(semLogin)) && asks.length === nAsk, 'sem login, nada de e-mail (e a IA nem é chamada)');
   // Desconectar apaga o cookie.
   r = await req('POST', '/auth/google/disconnect', {}, both);
   assert.equal((await r.json()).gmail.state, 'off'); assert.match(r.headers.getSetCookie().join(';'), /jv_google=; Path=\/; HttpOnly; Secure; SameSite=Lax; Max-Age=0/);
@@ -153,6 +163,30 @@ try {
   w = await (await req('POST', '/api/chat', { text: 'manda no zap pro João que terceira', wa }, ck)).json();
   r = await req('POST', '/api/whatsapp/enviar', { token: w.action.web }, ck); assert.equal(r.status, 429); assert.equal(G.wa.length, 2);
 
+  // Sem conexão: o Jarvis diz que não está conectado (a IA não inventa).
+  let n0 = asks.length;
+  let x = await (await req('POST', '/api/chat', { text: 'quais meus repositórios no github' }, ck)).json();
+  assert.match(JSON.stringify(x), /GitHub ainda não está conectado/); assert.equal(asks.length, n0, 'nem chama a IA');
+  x = await (await req('POST', '/api/chat', { text: 'lê meus emails' }, ck)).json();
+  assert.match(JSON.stringify(x), /conecte o Google/); assert.equal(asks.length, n0);
+  // GitHub na web: token de cada pessoa no cookie dela; o cache não mistura pessoas
+  assert.equal((await req('POST', '/api/github/token', { token: 'qualquer' }, ck)).status, 400);
+  assert.equal((await req('POST', '/api/github/token', { token: 'ghp_' + 'z'.repeat(36) }, ck)).status, 400, 'token recusado pelo GitHub');
+  r = await req('POST', '/api/github/token', { token: 'ghp_' + 'a'.repeat(36) }, ck);
+  const ghk = (r.headers.getSetCookie() || []).map(c => c.split(';')[0]).find(c => c.startsWith('jv_github='));
+  assert.equal((await r.json()).github.login, 'lucca'); assert.ok(ghk && !ghk.includes('aaaa'), 'token cifrado no cookie');
+  x = await (await req('POST', '/api/chat', { text: 'quais meus repositórios no github' }, ck + '; ' + ghk)).json();
+  assert.match(JSON.stringify(x), /jarvis.lucca/);
+  const ck2 = 'jarvis_sid=' + users.siteToken({ id: 'sb_outra', name: 'Outra', email: 'o@exemplo.com' });
+  r = await req('POST', '/api/github/token', { token: 'ghp_' + 'b'.repeat(36) }, ck2);
+  const ghk2 = (r.headers.getSetCookie() || []).map(c => c.split(';')[0]).find(c => c.startsWith('jv_github='));
+  x = await (await req('POST', '/api/chat', { text: 'quais meus repositórios no github' }, ck2 + '; ' + ghk2)).json();
+  assert.match(JSON.stringify(x), /jarvis.outra/); assert.ok(!/jarvis.lucca/.test(JSON.stringify(x)), 'cache não vaza entre pessoas');
+  assert.equal((await (await req('GET', '/api/integrations', null, ck2 + '; ' + ghk)).json()).github.on, false, 'cookie preso à conta');
+  // Notícias: o Google bloqueado, o Bing responde
+  x = await (await req('POST', '/api/chat', { text: 'quais as notícias de hoje' }, ck)).json();
+  assert.match(JSON.stringify(x), /Primeira manchete do dia/); assert.ok(!/Primeira manchete do dia - Fonte A/.test(JSON.stringify(x)));
+
   // O resto do app continua fechado no site, mesmo com conta.
   for (const p of ['/api/agenda/local', '/api/projects', '/api/correio', '/api/skills']) assert.equal((await req('GET', p, null, ck)).status, 404, p);
   for (const p of ['/api/files', '/api/keys/gemini']) assert.equal((await req('POST', p, {}, ck)).status, 404, p);
@@ -161,7 +195,7 @@ try {
   process.env.JARVIS_WEB_TRIAL = '0';
   assert.equal((await req('GET', '/app', null, ck)).headers.get('location'), '/windows');
   assert.equal((await (await req('GET', '/api/health')).json()).web, false);
-  console.log('web: só com conta, conversa por pessoa sem memória no servidor, sem limite diário, perfil no navegador, Google por pessoa em cookie cifrado, WhatsApp com pedido assinado, só o 2.5 e o resto fechado ok');
+  console.log('web: só com conta, conversa por pessoa sem memória no servidor, sem limite diário, perfil no navegador, Google por pessoa em cookie cifrado, WhatsApp com pedido assinado, GitHub por pessoa, notícias com reserva, só o 2.5 e o resto fechado ok');
 } finally {
   server.close(); globalThis.fetch = realFetch;
   fs.rmSync(DIR, { recursive: true, force: true });

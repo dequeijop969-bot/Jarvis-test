@@ -1,6 +1,7 @@
 // Chaves de API próprias. Guardadas só em data/keys.local.json (600); o .env vale como alternativa.
 // Nada aqui sai do servidor sem máscara.
 import { readJSON, writeJSON } from './store.js';
+import { webTokens } from './oauth.js';
 import { registerSecret, forgetSecret, mask } from './secrets.js';
 
 const FILE = 'keys.local.json';
@@ -23,6 +24,8 @@ const save = () => writeJSON(FILE, cache);
 const tests = {}; // último resultado de "Testar", só em memória
 
 export function getKey(p) {
+  const w = webTokens.getStore();
+  if (w && /^github_/.test(p)) { const t = String(w.tokens.github?.[p] || ''); registerSecret(t); return t; }
   const v = load()[p]?.key || process.env[PROVIDERS[p]?.env] || '';
   registerSecret(v);
   return v;

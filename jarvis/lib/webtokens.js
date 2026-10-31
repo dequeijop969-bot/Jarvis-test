@@ -2,7 +2,7 @@
 // derivada de JARVIS_SESSION_SECRET e preso à conta (o cookie de uma pessoa não serve para outra). O servidor não grava nada.
 import crypto from 'node:crypto';
 
-const PROVIDERS = ['google', 'spotify'];
+const PROVIDERS = ['google', 'spotify', 'github'];
 const DAYS = 180;
 const key = () => crypto.createHash('sha256').update('jarvis-web-tokens:' + (process.env.JARVIS_SESSION_SECRET || '')).digest();
 

@@ -25,7 +25,23 @@ export function parseRss(xml, max = 6) {
   }).filter(n => n.title && !seen.has(n.title.toLowerCase()) && seen.add(n.title.toLowerCase())).slice(0, max);
 }
 
+// Reserva: Bing Notícias (RSS), quando o Google não responde (ex.: bloqueio do IP do servidor na nuvem).
+async function bingFeed(q, params, max) {
+  const lang = params.hl || 'pt-BR', cc = (params.gl || 'BR').toUpperCase();
+  const u = `https://www.bing.com/news/search?${new URLSearchParams({ q: q || (lang.startsWith('pt') ? 'Brasil' : 'news'), format: 'rss', setlang: lang, cc })}`;
+  const hit = cache.get(u); if (hit && hit.exp > Date.now()) return hit.v;
+  const r = await fetch(u, { headers: { 'user-agent': 'Mozilla/5.0 (JARVIS)' }, signal: AbortSignal.timeout(6000) });
+  if (!r.ok) throw new Error('notícias indisponíveis');
+  const xml = (await r.text()).replace(/<(\/?)News:Source>/gi, '<$1source>');
+  const v = parseRss(xml, max).map(n => ({ ...n, title: n.title.replace(/\s+-\s+[^-]{2,40}$/, '') }));
+  cache.set(u, { v, exp: Date.now() + TTL });
+  return v;
+}
 async function feed(path, params, max) {
+  try { const v = await gfeed(path, params, max); if (v.length) return v; } catch { /* tenta o Bing */ }
+  return bingFeed(path === '/search' ? String(params.q || '').replace(/\s*when:\d+d/, '').replace(/"/g, '') : '', params, max);
+}
+async function gfeed(path, params, max) {
   const u = new URL(`https://news.google.com/rss${path}`);
   u.search = new URLSearchParams(params);
   const k = u.toString(), hit = cache.get(k);
