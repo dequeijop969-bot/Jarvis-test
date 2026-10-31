@@ -1793,6 +1793,13 @@ function showAction(a){
       if(x==='no'){try{await api('/api/actions/'+a.id+'/cancel')}catch{}closeSheet()}
       if(x==='yes'){e.target.disabled=true;try{await api('/api/actions/'+a.id+'/confirm',{via:'touch'});closeSheet();flash('Marcado na agenda.')}catch(er){closeSheet();flash(er.message||'Não consegui marcar o compromisso.')}}});
     return}
+  if(a.kind==='whatsapp_send'){
+    const v=a.params||{};
+    const d=sheet('<h3>Mandar no WhatsApp?</h3><p><b>'+esc(v.nome||'')+'</b></p><p class="wa-msg">'+esc(v.text||'')+'</p><p>Você também pode dizer "confirmo".</p><div class="sheet-acts"><button class="btn" data-x="no">Cancelar</button><button class="btn pri" data-x="yes">Enviar</button></div>');
+    d.addEventListener('click',async e=>{const x=e.target.dataset&&e.target.dataset.x;
+      if(x==='no'){try{await api('/api/actions/'+a.id+'/cancel')}catch{}closeSheet()}
+      if(x==='yes'){e.target.disabled=true;try{await api('/api/actions/'+a.id+'/confirm',{via:'touch'});closeSheet();flash('Enviado para '+(v.nome||'o contato')+'.')}catch(er){closeSheet();flash(er.message||'O WhatsApp não aceitou a mensagem.',true)}}});
+    return}
   if(a.kind==='pc_power'){
     const d=sheet('<h3>'+esc(a.preview||'Desligar o PC?')+'</h3><p>Salve o que estiver aberto. Dá para desistir dizendo "cancela o desligamento".</p><div class="sheet-acts"><button class="btn" data-x="no">Cancelar</button><button class="btn pri" data-x="yes">Confirmar</button></div>');
     d.addEventListener('click',async e=>{const x=e.target.dataset&&e.target.dataset.x;
@@ -1858,6 +1865,7 @@ renderInteg=function(){_ri();const host=$('#accRows');if(!host||!S.integ)return;
    ghCard('github_write','GitHub (escrita)','Branch e pull request só sob pedido. Token separado','gitw',(I.keys.github_write||{}).state==='on'?tgl('github_write','Escrita sob pedido'):'')+
    card1({ic:'eye',nm:'Visão da tela',on:!!window.__screenOn,by:'seu navegador',ds:window.__screenOn?'Compartilhando. Só olho quando o senhor pedir; nada é gravado':'Compartilhe uma tela ou janela e peça: "olha minha tela"',btn:window.__screenOn?okb('sc','Parar de compartilhar'):'<button class="go" type="button" data-x="sc" aria-label="Compartilhar tela">+</button>'})+
    (()=>{const s=I.spotify||{state:'off'};return card1({ic:'music',nm:'Spotify',on:s.state==='on',by:'Spotify',ds:s.state==='on'?esc(s.message||'Conectado')+' · toca, pula, pausa e diz o que está tocando':s.configured?'Toca, pula, pausa e diz o que está tocando (precisa do Premium para controlar)':esc(s.message||''),btn:s.state==='on'?okb('spx','Desconectar'):plus('/auth/spotify',!s.configured)})})()+
+   waCard(I.whatsapp||{state:'off'})+
    card1({ic:'pen',nm:'Canva',on:c.state==='on',by:'Canva',ds:c.state==='soon'?'Em breve':esc(c.message||''),btn:c.state==='on'?'<span class="go ok" aria-hidden="true">✓</span>':plus('#',true)})};
 Object.assign(IC,{coin:'<circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.4c-.5-.8-1.5-1.3-2.8-1.3-1.6 0-2.7.8-2.7 2s1.1 1.6 2.7 1.9 2.9.8 2.9 2.1-1.2 2-2.9 2c-1.4 0-2.5-.5-3-1.4M12 6.3v1.8M12 15.9v1.8"/>',
   ball:'<circle cx="12" cy="12" r="9"/><path d="m12 7.6 4 2.9-1.5 4.6h-5L8 10.5z"/><path d="M12 3v4.6M16 10.5l4.4-1.3M14.5 15.1l2.7 3.8M9.5 15.1l-2.7 3.8M8 10.5 3.6 9.2"/>',
@@ -1877,8 +1885,23 @@ function webCards(){
     card1({ic:'tasks',nm:'Google Tasks',on:!!I.gtasks?.on,by:'Google',ds:I.gtasks?.on?'“Põe comprar pão na lista”, “quais minhas tarefas?”':gOn?'Reconecte o Google marcando a caixa do Tasks':g.configured?'Tarefas e listas por voz':soon,btn:I.gtasks?.on?ok:plus('/auth/google',!g.configured)})+
     card1({ic:'music',nm:'Spotify',on:sOn,by:'Spotify',ds:sOn?esc(sp.message||'Conectado')+' · pula, pausa e diz o que está tocando':sp.configured?'Pula, pausa e diz o que está tocando (Premium)':soon,btn:sOn?okb('spx','Desconectar'):plus('/auth/spotify',!sp.configured)})+
     '<p class="wsub">No app para Windows</p>'+
-    pc('git','GitHub','GitHub','PRs, CI e issues')+pc('pen','Canva','Canva','Em breve')}
+    pc('wa','WhatsApp','Meta','Manda mensagens por voz')+pc('git','GitHub','GitHub','PRs, CI e issues')+pc('pen','Canva','Canva','Em breve')}
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-x=wcity]')){togglePanel(false);openProfile(true)}});
+// WhatsApp: logo, cartão com os contatos e o teste da chave
+BR.wa='<circle cx="12" cy="12" r="10" fill="#25D366"/><path fill="#fff" d="M12 5.6a6.3 6.3 0 0 0-5.4 9.6l-.8 2.9 3-.8A6.3 6.3 0 1 0 12 5.6zm3.7 8.9c-.2.4-.9.8-1.3.8-.3 0-.7.1-2.3-.5-1.9-.8-3.1-2.7-3.2-2.8-.1-.1-.8-1-.8-2s.5-1.4.7-1.6c.2-.2.4-.2.5-.2h.4c.1 0 .3 0 .4.3l.6 1.4c.1.1.1.3 0 .4l-.2.3-.3.3c-.1.1-.2.2-.1.4.1.2.6 1 1.3 1.6.9.8 1.6 1 1.8 1.1.2.1.3.1.4-.1l.6-.7c.1-.2.3-.2.4-.1l1.3.6c.2.1.3.1.4.2 0 .1 0 .5-.1.6z"/>';
+function waCard(w){const on=w.state==='on',cs=w.contatos||[];
+  const list=cs.length?'<ul class="wa-l">'+cs.map((c,i)=>'<li><b>'+esc(c.nome)+'</b><span>'+esc(c.numero)+'</span><button class="x" type="button" data-x="wadel" data-i="'+i+'" aria-label="Remover '+esc(c.nome)+'">×</button></li>').join('')+'</ul>':'<p class="s">Nenhum contato ainda.</p>';
+  const form='<form class="waf" autocomplete="off"><input name="nome" maxlength="40" placeholder="Nome (ex.: Mãe)" aria-label="Nome do contato"><input name="numero" inputmode="tel" maxlength="22" placeholder="11 91234-5678" aria-label="Número com DDD"><button class="btn" type="submit">Adicionar</button></form>';
+  const how=on?'':'<p class="s">Para ligar: crie um app em developers.facebook.com com o produto WhatsApp e cole no .env o <b>WHATSAPP_TOKEN</b> e o <b>WHATSAPP_PHONE_ID</b>. Depois feche e abra o Jarvis.</p>';
+  return card1({ic:'wa',nm:'WhatsApp',on,by:'Meta',ds:on?esc(w.message||'')+' · “manda no zap pro João que chego às 8”':'Manda mensagens por voz, sempre com a sua confirmação',
+    extra:how+list+form+'<p class="msg" id="waMsg" role="status"></p>',btn:on?okb('watest','Testar a conexão'):'<span class="go" aria-disabled="true">+</span>'})}
+document.addEventListener('submit',async e=>{const f=e.target.closest&&e.target.closest('form.waf');if(!f)return;e.preventDefault();
+  try{S.integ=await api('/api/whatsapp/contatos',{nome:f.nome.value,numero:f.numero.value});renderInteg()}catch(er){const m=document.getElementById('waMsg');if(m){m.className='msg bad';m.textContent=er.message}}});
+document.addEventListener('click',async e=>{const b=e.target.closest&&e.target.closest('[data-x=wadel],[data-x=watest]');if(!b)return;const m=document.getElementById('waMsg');
+  try{
+    if(b.dataset.x==='wadel'){S.integ=await req('DELETE','/api/whatsapp/contatos/'+b.dataset.i);renderInteg()}
+    if(b.dataset.x==='watest'){if(m){m.className='msg';m.textContent='Testando…'}const r=await api('/api/whatsapp/teste',{});if(m){m.className='msg good';m.textContent='Funcionando: '+(r.nome?r.nome+' · ':'')+(r.numero||'número de envio ok')}}
+  }catch(er){if(m){m.className='msg bad';m.textContent=er.message}}});
 document.addEventListener('submit',async e=>{const f=e.target.closest&&e.target.closest('form.gk');if(!f)return;e.preventDefault();const p=f.dataset.p;
   try{S.integ.keys[p]=await api('/api/keys/'+p,{key:f.key.value});ghOpen=null;renderInteg()}catch(er){flash(er.message||'Não consegui salvar o token.')}});
 document.addEventListener('click',async e=>{const b=e.target.closest&&e.target.closest('[data-x]');if(!b)return;const x=b.dataset.x,p=b.dataset.p;
@@ -3215,6 +3238,10 @@ body.mini:not(.mini-v) #tx{display:none}
 /* Teste na web: só o que funciona sem o PC */
 body.web .ibtn,body.web .mode-sw,body.web #quick,body.web #tx .up,body.web #planb{display:none!important}
 body.web .pnav [data-tab=code],body.web .pnav [data-tab=apps],body.web .pnav [data-tab=agenda],body.web .pnav [data-tab=skills],body.web .pnav [data-tab=projetos]{display:none!important}
+#cx .wa-l{list-style:none;margin:8px 0 6px;padding:0;display:grid;gap:4px}
+#cx .wa-l li{display:flex;align-items:center;gap:8px;font-size:13px}#cx .wa-l li span{color:var(--mute);font:12px var(--mono)}#cx .wa-l li .x{margin-left:auto}
+#cx .waf{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}#cx .waf input{flex:1 1 110px;min-width:0}
+#xp .wa-msg{white-space:pre-wrap;background:var(--bg2,#15171c);border-left:3px solid #25D366;padding:8px 10px;border-radius:8px}
 #cx .wsub{grid-column:1/-1;margin:14px 2px 2px;font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
 #cx .wsub:first-child{margin-top:0}
 #webDl{height:34px;padding:0 14px;font-size:13px;white-space:nowrap}
@@ -4563,6 +4590,7 @@ body.jornal-on #cap{font-size:clamp(19px,2vw,26px)}
     canva: { bg: '#7d2ae8', label: 'Canva', draw: g => { g.fillStyle = '#fff'; g.font = 'italic 700 9px Georgia,serif'; g.textAlign = 'center'; g.fillText('C', 12, 15.5); } },
     app: { bg: '#262931', label: 'App', draw: g => { g.strokeStyle = '#f1efe9'; g.lineWidth = 1.7; g.stroke(P('M5 5h6v6H5zM13 5h6v6h-6zM5 13h6v6H5zM13 13h6v6h-6z')); } },
     drive: { bg: '#ffffff', label: 'Drive', draw: g => { [['#0066da', 'M3.6 18.4l1 1.7c.2.4.5.7.9.9l3.6-6.2H2c0 .4.1.8.3 1.2z'], ['#00ac47', 'M12 8.7L8.4 2.5c-.4.2-.7.5-.9.9L2.3 12.6c-.2.4-.3.8-.3 1.2h7.1z'], ['#ea4335', 'M18.5 21c.4-.2.7-.5.9-.9l.4-.7 2-3.4c.2-.4.3-.8.3-1.2h-7.1l1.5 3z'], ['#00832d', 'M12 8.7l3.6-6.2c-.4-.2-.8-.3-1.2-.3H9.6c-.4 0-.8.1-1.2.3z'], ['#2684fc', 'M14.9 14.8H9.1L5.5 21c.4.2.8.3 1.2.3h10.6c.4 0 .8-.1 1.2-.3z'], ['#ffba00', 'M18.5 9.1l-3.3-5.7c-.2-.4-.5-.7-.9-.9L10.7 8.7l4.2 6.1H22c0-.4-.1-.8-.3-1.2z']].forEach(([c, d]) => { g.fillStyle = c; g.fill(P(d)); }); } },
+    whatsapp: { bg: '#25D366', label: 'WhatsApp', draw: g => { g.fillStyle = '#fff'; g.fill(P('M12 5.6a6.3 6.3 0 0 0-5.4 9.6l-.8 2.9 3-.8A6.3 6.3 0 1 0 12 5.6z')); g.fillStyle = '#25D366'; g.beginPath(); g.arc(12, 11.9, 3.2, 0, 7); g.fill(); } },
     tarefas: { bg: '#1a73e8', label: 'Tarefas', draw: g => { g.strokeStyle = '#fff'; g.lineWidth = 2.2; g.lineCap = 'round'; g.lineJoin = 'round'; g.stroke(P('M7.5 12.3l3 3 6-6.3')); } },
     lembrete: { bg: '#f2b33d', label: 'Lembretes', draw: g => { g.strokeStyle = '#16120a'; g.lineWidth = 1.8; g.lineCap = 'round'; g.lineJoin = 'round'; g.stroke(P('M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9M10.3 20.5a1.9 1.9 0 0 0 3.4 0')); } },
     cambio: { bg: '#1f9d55', label: 'Câmbio', draw: g => { g.fillStyle = '#fff'; g.font = '800 15px Montserrat,sans-serif'; g.textAlign = 'center'; g.fillText('$', 12, 17.5); } },
@@ -4586,6 +4614,7 @@ body.jornal-on #cap{font-size:clamp(19px,2vw,26px)}
     if (/agenda/.test(t)) out.add('agenda');
     if (/e-?mails?|gmail|lixeira/.test(t)) out.add('gmail');
     if (/github/.test(t)) out.add('github');
+    if (/whatsapp/.test(t)) out.add('whatsapp');
     if (/steam|jogo/.test(t)) out.add('steam');
     if (/tela/.test(t) || j?.seen) out.add('tela');
     if (/correio/.test(t)) out.add('correio');

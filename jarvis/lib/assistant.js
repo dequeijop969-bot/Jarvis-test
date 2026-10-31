@@ -11,6 +11,7 @@ import * as money from './money.js';
 import * as pcctl from './pccontrol.js';
 import * as gdrive from './gdrive.js';
 import * as gtasks from './gtasks.js';
+import * as whatsapp from './whatsapp.js';
 
 const CHART_TYPES = new Set(['bars', 'line', 'donut', 'ranking', 'compare', 'timeline', 'bignumber', 'concept']);
 const NUMERIC = new Set(['bars', 'line', 'donut', 'ranking', 'compare', 'bignumber']);
@@ -464,6 +465,8 @@ export function detectIntent(text, opts = {}) {
     || (opts.screenCan && (POINTS_AT_SCREEN.test(t) || GENERIC_SCREEN_Q.test(t))))
     return { kind: 'screen' };
   // Lembretes, alarmes e timers; controle do PC; câmbio e cripto; futebol (o time é conferido no servidor).
+  const wa = whatsapp.parse(text);   // só com "WhatsApp"/"zap" na frase
+  if (wa) return { kind: 'whatsapp', ...wa };
   const gd = gdrive.parse(text);
   if (gd) return { ...gd, kind: 'drive' };
   const gt = gtasks.parse(text);

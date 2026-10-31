@@ -26,6 +26,7 @@ import * as reminders from './lib/reminders.js';
 import * as money from './lib/money.js';
 import * as football from './lib/football.js';
 import * as pcctl from './lib/pccontrol.js';
+import * as whatsapp from './lib/whatsapp.js';
 import * as gdrive from './lib/gdrive.js';
 import * as gtasks from './lib/gtasks.js';
 let lastDrive = null;   // última lista do Drive mostrada ("abre o primeiro")
@@ -99,7 +100,7 @@ function briefGithub(s) {
 
 /* ---------- Estado para a interface (nada sensível) ---------- */
 function integrations() {
-  return { conta: conta.status(), gmail: google.googleStatus(), canva: canva.canvaStatus(), spotify: spotify.status(), gdrive: { on: google.canDrive(), save: google.canDriveSave() }, gtasks: { on: google.canTasks() }, keys: keys.allStatus(), actions: actions.allToggles(), images: images.imagesStatus(),
+  return { conta: conta.status(), gmail: google.googleStatus(), canva: canva.canvaStatus(), spotify: spotify.status(), whatsapp: whatsapp.status(), gdrive: { on: google.canDrive(), save: google.canDriveSave() }, gtasks: { on: google.canTasks() }, keys: keys.allStatus(), actions: actions.allToggles(), images: images.imagesStatus(),
     voice: { eleven: elevenReady(), voices: VOICES }, workspace: workspace.status(), mcp: mcp.status(), game: gameplay.status(), gameEnd: lastGameEnd, mascot: { connected: mascot.connected() }, launcher: { apps: launcher.customApps().map(a => ({ name: a.name, file: a.path.split(/[\/]/).pop() })), windows: process.platform === 'win32', installed: launcher.installedApps().length } };
 }
 function publicProfile(p) {
@@ -132,6 +133,7 @@ async function executeAction({ kind, params }) {
     return { trashed: moved.map(f => path.basename(f)), skipped: params.paths.length - moved.length };
   }
   if (kind === 'pc_power') { await pcctl.power(params.op, params.minutes); return { power: params }; }
+  if (kind === 'whatsapp_send') { const r = await whatsapp.send(params.to, params.text); return { whatsapp: { nome: params.nome, via: r.via } }; }
   if (kind === 'calendar_create') { const ev = await google.createCalendarEvent(params); calendar._clearCalendarCache(); return { event: { title: ev.title, start: ev.start, end: ev.end, link: ev.link } }; }
   if (kind === 'github_comment') return github.comment(params.repo, params.pr ?? params.issue, params.body);
   if (kind === 'github_labels') return github.addLabels(params.repo, params.pr ?? params.issue, params.labels);
@@ -219,6 +221,8 @@ setInterval(() => {
   try {
     for (const x of reminders.due()) {
       mascot.uiEmit('lembrete', { id: x.id, kind: x.kind, text: x.text });
+      const me = whatsapp.myNumber();
+      if (me) whatsapp.send(me, `⏰ Lembrete do Jarvis: ${x.text}`).catch(e => log.warn('[whatsapp] lembrete não saiu:', e.message));
       mascot.emit('emocao', { nome: 'surpreso', segundos: 4 });
       log.info(`[lembrete] ${x.kind}: ${x.text}`);
     }
@@ -404,6 +408,17 @@ async function handleIntent(it, p, screen, text = '') {
       }
     } catch (e) { return rr(e.message || 'O Windows não deixou.'); }
   }
+  /* ---------- WhatsApp: sempre com confirmação ---------- */
+  if (it.kind === 'whatsapp') {
+    const rr = t => ({ ...integrationReply(t, 'WhatsApp'), meta: { provider: null, model: null, tier: 'local', degraded: false } });
+    if (!whatsapp.configured()) return rr(`O WhatsApp ainda não está configurado, ${a.short}. Falta a chave da API no .env; o passo a passo está em Ajustes, no cartão do WhatsApp.`);
+    const c = whatsapp.resolve(it.to);
+    if (!c) return rr(`Não achei "${it.to}" nos seus contatos do WhatsApp, ${a.short}. Cadastre em Ajustes, no cartão do WhatsApp, ou diga o número com DDD.`);
+    if (!it.text) return rr(`O que eu digo para ${c.nome}, ${a.short}?`);
+    const action = actions.createAction('whatsapp_send', { to: c.numero, nome: c.nome, text: it.text }, `Mandar para ${c.nome}: “${it.text}”`);
+    lastPending = { id: action.id, at: Date.now() };
+    return { ...rr(`Mando para ${c.nome}: “${it.text}”? Diga "confirmo" ou toque em Confirmar, ${a.short}.`), action };
+  }
   /* ---------- câmbio e cripto ---------- */
   if (it.kind === 'money') {
     const meta = { provider: null, model: null, tier: 'local', degraded: false };
@@ -525,10 +540,11 @@ async function handleIntent(it, p, screen, text = '') {
     const pend = lastPending && Date.now() - lastPending.at < 120_000 && actions.getAction(lastPending.id) ? lastPending.id : null;
     if (!pend) return null; // sem ação pendente: segue a conversa normal
     lastPending = null;
-    const pendKind = actions.getAction(pend)?.kind, topic = pendKind === 'calendar_create' ? 'Agenda' : pendKind === 'files_trash' ? 'Arquivos' : pendKind === 'pc_power' ? 'PC' : 'Lixeira';
+    const pendKind = actions.getAction(pend)?.kind, topic = pendKind === 'calendar_create' ? 'Agenda' : pendKind === 'files_trash' ? 'Arquivos' : pendKind === 'pc_power' ? 'PC' : pendKind === 'whatsapp_send' ? 'WhatsApp' : 'Lixeira';
     if (it.kind === 'cancel') { actions.clearAction(pend); return { ...r(`Cancelado, ${a.short}. Nada foi alterado.`, topic), cancelled: true }; }
     try {
       const out = await confirmAndRun(pend, 'voice');
+      if (out.whatsapp) return { ...r(`Enviado para ${out.whatsapp.nome}, ${a.short}.${out.whatsapp.via === 'modelo' ? ' Foi pelo modelo aprovado, porque a pessoa não falou com o número nas últimas 24 horas.' : ''}`, 'WhatsApp'), ...out };
       if (out.power) return { ...r(`Combinado, ${a.short}: vou ${out.power.op} o PC ${out.power.minutes ? `em ${out.power.minutes} minuto${out.power.minutes > 1 ? 's' : ''}` : 'agora'}. Salve o que estiver aberto. Para desistir, diga "cancela o desligamento".`, 'PC'), ...out };
       if (out.event) return { ...r(`Marcado, ${a.short}: ${out.event.title}, ${calendar.whenSpeech(out.event.start, calendar.zoneOf(p))}.`, 'Agenda'), ...out };
       if (out.trashed) return { ...r(out.trashed.length ? `Feito, ${a.short}. Mandei ${out.trashed.length === 1 ? out.trashed[0] : `${out.trashed.length} itens`} para a Lixeira${out.skipped ? ` e pulei ${out.skipped}` : ''}. Dá para restaurar por lá.` : `Não consegui mandar nada para a Lixeira, ${a.short}.`, 'Arquivos'), ...out };
@@ -1662,6 +1678,10 @@ async function route(req, res, u) {
   if (M === 'POST' && url === '/auth/google/disconnect') { await google.disconnect(); clearTriageCache(); return send(res, 200, integrations()); }
 
   // Canva (estrutura pronta; redirect em 127.0.0.1, exigência do Canva)
+  // WhatsApp: contatos (nome -> número) e teste da chave. Mandar mensagem é só pela voz/texto, com confirmação.
+  if (M === 'POST' && url === '/api/whatsapp/contatos') { const b = await readBody(req); whatsapp.addContact(b.nome, b.numero); return send(res, 200, integrations()); }
+  if (M === 'DELETE' && /^\/api\/whatsapp\/contatos\/\d{1,3}$/.test(url)) { whatsapp.removeContact(Number(url.split('/').pop())); return send(res, 200, integrations()); }
+  if (M === 'POST' && url === '/api/whatsapp/teste') { try { return send(res, 200, await whatsapp.test()); } catch (e) { throw new HttpError(e.code || 502, e.message); } }
   if (M === 'GET' && url === '/auth/spotify') {
     if (!spotify.configured()) return redirect(res, '/app?spotify=config');
     return redirect(res, spotify.authRedirect());
