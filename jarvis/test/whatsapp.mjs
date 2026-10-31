@@ -35,6 +35,9 @@ assert.equal(wa.parse('manda um email pro joão que chego às 8'), null, 'sem Wh
 assert.equal(wa.normalize('(11) 91234-5678'), '5511912345678');
 assert.equal(wa.normalize('+1 415 555 0100'), '14155550100', 'DDI de fora não vira +55');
 assert.equal(wa.normalize('1234'), '');
+assert.equal(wa.br9('551187654321'), '5511987654321', 'celular do Brasil sem o 9 ganha o 9');
+assert.equal(wa.br9('551133334444'), '551133334444', 'fixo não muda');
+assert.equal(wa.br9('5511987654321'), '5511987654321');
 // Contatos
 wa.addContact('João Silva', '11 91234-5678'); wa.addContact('Mãe', '21 99876-5432');
 assert.throws(() => wa.addContact('X', '123'), /Número inválido/);

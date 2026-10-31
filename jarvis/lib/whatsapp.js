@@ -73,10 +73,12 @@ async function post(body) {
       : r.status === 429 || code === 130429 ? 'O WhatsApp pediu um tempo. Tente em instantes.'
       : `O WhatsApp recusou a mensagem${code ? ` (erro ${code}${sub ? '/' + sub : ''})` : ''}.`), { code: r.status === 429 ? 429 : 502, wa: code });
 }
+// Celular do Brasil chega do WhatsApp sem o 9 (55 11 8765-4321); a lista de teste da Meta só aceita com o 9.
+export const br9 = d => (/^55\d{2}[6-9]\d{7}$/.test(d) ? d.slice(0, 4) + '9' + d.slice(4) : d);
 // Texto livre; fora da janela de 24 h usa o modelo aprovado (WHATSAPP_TEMPLATE), se houver.
 export async function send(to, text) {
   if (!configured()) throw Object.assign(new Error('O WhatsApp não está configurado.'), { code: 409 });
-  const d = normalize(to), body = str(text, 1000);
+  const d = br9(normalize(to)), body = str(text, 1000);
   if (!d || !body) throw Object.assign(new Error('Faltou o número ou a mensagem.'), { code: 400 });
   try { return { id: await post({ to: d, type: 'text', text: { body, preview_url: false } }), via: 'texto' }; }
   catch (e) {
