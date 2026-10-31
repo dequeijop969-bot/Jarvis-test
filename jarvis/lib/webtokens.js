@@ -29,16 +29,26 @@ function addCookie(res, c) {
 const attrs = (path, age) => `; Path=${path}; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
 
 // Contexto de um pedido da web: lib/oauth.js lê e grava os tokens aqui em vez do arquivo do servidor.
-export function webTokenCtx(req, res, who) {
+export function webTokenCtx(req, res, who, onSave = null) {
   const ck = cookies(req), tokens = {};
   for (const p of PROVIDERS) { const o = open(ck['jv_' + p]); if (o && o.uid === who.id && o.t) tokens[p] = o.t; }
   return {
     tokens,
-    save(p) { const t = tokens[p]; addCookie(res, `jv_${p}=${t ? seal({ uid: who.id, t }) : ''}${attrs('/', t ? DAYS * 86400 : 0)}`); },
+    save(p) { if (onSave) Promise.resolve(onSave({ ...tokens })).catch(() => {}); const t = tokens[p]; addCookie(res, `jv_${p}=${t ? seal({ uid: who.id, t }) : ''}${attrs('/', t ? DAYS * 86400 : 0)}`); },
     flowSet(p, state, verifier) { addCookie(res, `jv_f_${p}=${seal({ uid: who.id, state, verifier, exp: Date.now() + 600_000 })}${attrs('/auth', 600)}`); },
     flowGet(p) {
       const o = open(ck['jv_f_' + p]); addCookie(res, `jv_f_${p}=${attrs('/auth', 0)}`);
       return o && o.uid === who.id && o.exp > Date.now() ? o : null;
     }
+  };
+}
+
+// Contexto do WhatsApp: os logins vêm do banco (cópia cifrada) e voltam para lá quando renovam. Conectar só pela web/app.
+export function storeTokenCtx(tokens, onSave) {
+  return {
+    tokens: { ...(tokens || {}) },
+    save() { Promise.resolve(onSave({ ...this.tokens })).catch(() => {}); },
+    flowSet() { throw Object.assign(new Error('Conecte pelo site ou pelo app.'), { code: 409 }); },
+    flowGet() { return null; }
   };
 }

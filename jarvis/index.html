@@ -1898,7 +1898,24 @@ function waCard(w){const on=w.state==='on',cs=S.state?.web?waList():(w.contatos|
   const mine=S.state?.web?'<form class="waf wame" autocomplete="off"><input name="me" inputmode="tel" maxlength="22" placeholder="Seu número (lembretes)" aria-label="Seu número de WhatsApp para lembretes" value="'+esc(S.profile?.whatsapp||'')+'"><button class="btn" type="submit">Salvar</button></form>':'';
   const how=on?mine:S.state?.web?'<p class="s">Ainda não liberado no site.</p>':'<p class="s">Para ligar: crie um app em developers.facebook.com com o produto WhatsApp e cole no .env o <b>WHATSAPP_TOKEN</b> e o <b>WHATSAPP_PHONE_ID</b>. Depois feche e abra o Jarvis.</p>';
   return card1({ic:'wa',nm:'WhatsApp',on,by:'Meta',ds:on?esc(w.message||'')+' · “manda no zap pro João que chego às 8”':'Manda mensagens por voz, sempre com a sua confirmação',
-    extra:how+list+form+'<p class="msg" id="waMsg" role="status"></p>',btn:on?okb('watest','Testar a conexão'):'<span class="go" aria-disabled="true">+</span>'})}
+    extra:how+list+form+'<p class="msg" id="waMsg" role="status"></p>'+waBotHtml(),btn:on?okb('watest','Testar a conexão'):'<span class="go" aria-disabled="true">+</span>'})}
+// Conversar com o Jarvis pelo WhatsApp: o número da pessoa liga à conta com um código de 6 dígitos.
+function waBotHtml(){
+  if(S.waVinc===undefined){S.waVinc=null;req('GET','/api/whatsapp/vinculo').then(v=>{S.waVinc=v||{ligado:false};renderInteg()}).catch(()=>{S.waVinc={ligado:false,erro:true};renderInteg()})}
+  const v=S.waVinc,c=S.waCode;let in_='';
+  if(!v)in_='<p class="s">Verificando…</p>';
+  else if(S.state?.web&&v.liberado===false)in_='<p class="s">Ainda não liberado no site.</p>';
+  else if(!S.state?.web&&v.conta===false)in_='<p class="s">Entre com a sua conta JARVIS (acima, em Conexões) para eu atender pelo WhatsApp.</p>';
+  else if(v.ligado)in_='<p class="s">Ligado ao número <b>'+esc(v.numero||'')+'</b>'+(v.pc?' · aceita pedidos para este PC':'')+'. Escreva ou mande áudio para o Jarvis no WhatsApp.</p><div class="bar"><button class="btn ghost" type="button" data-x="wabot-off">Desligar</button></div>';
+  else if(c)in_='<p class="s">Mande <b>JARVIS '+esc(c.codigo)+'</b> para '+esc(c.numero?'+'+c.numero:'o número do Jarvis')+' em até '+c.expira+' minutos.</p><div class="bar">'+(c.link?'<a class="btn pri" href="'+esc(c.link)+'" target="_blank" rel="noopener noreferrer">Abrir o WhatsApp</a>':'')+'<button class="btn ghost" type="button" data-x="wabot-check">Já mandei</button></div>';
+  else in_='<p class="s">Converse comigo pelo WhatsApp, por texto ou áudio: cotações, futebol, notícias, lembretes, e-mails, tarefas'+(S.state?.web?'':' e comandos para este PC')+'.</p><div class="bar"><button class="btn pri" type="button" data-x="wabot-link">Ligar meu WhatsApp</button></div>';
+  return '<div class="wa-bot"><h5>Conversar comigo pelo WhatsApp</h5>'+in_+'</div>'}
+document.addEventListener('click',async e=>{const b=e.target.closest&&e.target.closest('[data-x^=wabot-]');if(!b)return;const m=document.getElementById('waMsg');
+  try{
+    if(b.dataset.x==='wabot-link'){b.disabled=true;S.waCode=await api('/api/whatsapp/vincular',{});renderInteg();if(S.waCode.link)window.open(S.waCode.link,'_blank','noopener')}
+    if(b.dataset.x==='wabot-check'){S.waVinc=await req('GET','/api/whatsapp/vinculo');if(S.waVinc.ligado)S.waCode=null;else if(m){m.className='msg';m.textContent='Ainda não chegou. Mande a mensagem com o código e toque de novo.'}renderInteg()}
+    if(b.dataset.x==='wabot-off'){if(!confirm('Desligar o Jarvis do seu WhatsApp?'))return;S.waVinc=await req('DELETE','/api/whatsapp/vinculo');S.waCode=null;renderInteg()}
+  }catch(er){b.disabled=false;if(m){m.className='msg bad';m.textContent=er.message}}});
 document.addEventListener('submit',async e=>{const f=e.target.closest&&e.target.closest('form.wame');if(!f)return;e.preventDefault();e.stopImmediatePropagation();const m=document.getElementById('waMsg');
   try{const r=await api('/api/profile',{whatsapp:f.me.value});S.profile=r.profile;if(m){m.className='msg good';m.textContent=r.profile.whatsapp?'Lembretes vão chegar nesse número.':'Número apagado.'}}catch(er){if(m){m.className='msg bad';m.textContent=er.message}}},true);
 document.addEventListener('submit',async e=>{const f=e.target.closest&&e.target.closest('form.waf');if(!f)return;e.preventDefault();
@@ -3252,6 +3269,7 @@ body.web .pnav [data-tab=code],body.web .pnav [data-tab=apps],body.web .pnav [da
 #cx .wa-l li{display:flex;align-items:center;gap:8px;font-size:13px}#cx .wa-l li span{color:var(--mute);font:12px var(--mono)}#cx .wa-l li .x{margin-left:auto}
 #cx .waf{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}#cx .waf input{flex:1 1 110px;min-width:0}
 #xp .wa-msg{white-space:pre-wrap;background:var(--bg2,#15171c);border-left:3px solid #25D366;padding:8px 10px;border-radius:8px}
+#cx .wa-bot{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}#cx .wa-bot h5{margin:0 0 4px;font:600 13px var(--sans,inherit)}
 #cx .wsub{grid-column:1/-1;margin:14px 2px 2px;font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
 #cx .wsub:first-child{margin-top:0}
 #webDl{height:34px;padding:0 14px;font-size:13px;white-space:nowrap}

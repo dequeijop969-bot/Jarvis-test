@@ -52,6 +52,15 @@ async function nuvem(method, p, body) {
 export const lembreteNuvem = (texto, quando, numero) => nuvem('POST', '/api/nuvem/lembrete', { texto, quando, numero }).then(j => j.id);
 export const cancelarLembreteNuvem = id => nuvem('DELETE', '/api/nuvem/lembrete/' + encodeURIComponent(id));
 
+// Jarvis no WhatsApp: ligar o número à conta (o site devolve um código para mandar ao número do Jarvis), ver e desligar.
+// pc = este PC aceita pedidos vindos do WhatsApp (o app busca a fila no site enquanto estiver aberto).
+export async function vincularWhatsApp(dados) { const j = await nuvem('POST', '/api/nuvem/whatsapp', dados); st.waPc = true; save(); return j; }
+export const vinculoWhatsApp = () => nuvem('GET', '/api/nuvem/whatsapp');
+export async function desvincularWhatsApp() { const j = await nuvem('DELETE', '/api/nuvem/whatsapp'); st.waPc = false; save(); return j; }
+export const waPc = () => !!load().token && !!load().waPc;
+export const filaPC = () => nuvem('GET', '/api/nuvem/pc/fila').then(j => j.itens || []);
+export const respostaPC = (id, resposta, pendente) => nuvem('POST', '/api/nuvem/pc/fila/' + encodeURIComponent(id), { resposta, pendente: !!pendente });
+
 // Pedido ao Gemini pelo site (mesmo formato do generateContent). Devolve a Response do site, igual à do Google.
 export async function gemini(model, request, timeoutMs) {
   const s = load();

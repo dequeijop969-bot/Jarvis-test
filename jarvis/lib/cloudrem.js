@@ -25,11 +25,12 @@ const cfg = () => {
   if (key) registerSecret(key);
   return /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/i.test(url) && key.length > 20 ? { url, key } : null;
 };
+export const dbOn = () => !!cfg();
 export const on = () => !!cfg() && whatsapp.configured();
 export const cronOk = req => { const s = String(process.env.CRON_SECRET || ''); return s.length >= 16 && String(req.headers.authorization || '') === `Bearer ${s}`; };
 export const DB = { fetch: (...a) => fetch(...a) };   // trocável nos testes
 
-async function rest(path, { method = 'GET', body, prefer } = {}) {
+export async function db(path, { method = 'GET', body, prefer } = {}) {
   const c = cfg(); if (!c) throw Object.assign(new Error('Banco de lembretes não configurado.'), { code: 503 });
   const r = await DB.fetch(`${c.url}/rest/v1/${path}`, { method, signal: AbortSignal.timeout(10_000),
     headers: { apikey: c.key, authorization: `Bearer ${c.key}`, 'content-type': 'application/json', ...(prefer ? { prefer } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -42,30 +43,32 @@ export async function add(uid, { texto, quando, numero }) {
   const n = whatsapp.normalize(numero), t = String(texto || '').replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, 300), at = Number(quando);
   if (!uidOk(uid) || !n || !t || !Number.isFinite(at)) throw Object.assign(new Error('Lembrete inválido.'), { code: 400 });
   if (at < Date.now() - 60_000 || at > Date.now() + 366 * 86400_000) throw Object.assign(new Error('Horário do lembrete fora do permitido.'), { code: 400 });
-  const pend = await rest(`${TABLE}?select=id&uid=eq.${encodeURIComponent(uid)}&enviado=is.false&limit=${MAX_PEND}`);
+  const pend = await db(`${TABLE}?select=id&uid=eq.${encodeURIComponent(uid)}&enviado=is.false&limit=${MAX_PEND}`);
   if ((pend || []).length >= MAX_PEND) throw Object.assign(new Error(`Limite de ${MAX_PEND} lembretes pendentes.`), { code: 429 });
-  const [row] = await rest(TABLE, { method: 'POST', prefer: 'return=representation', body: { uid, numero: n, texto: t, quando: new Date(at).toISOString() } });
+  const [row] = await db(TABLE, { method: 'POST', prefer: 'return=representation', body: { uid, numero: n, texto: t, quando: new Date(at).toISOString() } });
   return { id: row.id, quando: at };
 }
 export async function list(uid) {
   if (!uidOk(uid)) return [];
-  const rows = await rest(`${TABLE}?select=id,texto,quando&uid=eq.${encodeURIComponent(uid)}&enviado=is.false&order=quando.asc&limit=${MAX_PEND}`);
+  const rows = await db(`${TABLE}?select=id,texto,quando&uid=eq.${encodeURIComponent(uid)}&enviado=is.false&order=quando.asc&limit=${MAX_PEND}`);
   return (rows || []).map(r => ({ id: r.id, texto: r.texto, quando: Date.parse(r.quando) }));
 }
 export async function cancel(uid, id) {
   if (!uidOk(uid) || !/^[0-9a-f-]{36}$/i.test(String(id))) throw Object.assign(new Error('Lembrete inválido.'), { code: 400 });
-  await rest(`${TABLE}?id=eq.${id}&uid=eq.${encodeURIComponent(uid)}&enviado=is.false`, { method: 'DELETE' });
+  await db(`${TABLE}?id=eq.${id}&uid=eq.${encodeURIComponent(uid)}&enviado=is.false`, { method: 'DELETE' });
 }
-// Dispara os vencidos. Cada um é "reservado" (enviado=false -> true) antes de sair: duas chamadas ao mesmo tempo não mandam em dobro.
-export async function run(now = Date.now()) {
-  const rows = await rest(`${TABLE}?select=id,numero,texto,quando&enviado=is.false&quando=lte.${encodeURIComponent(new Date(now).toISOString())}&order=quando.asc&limit=50`) || [];
+// Dispara os vencidos. fmt(texto, linha) devolve a mensagem final (a IA escreve no tom do Jarvis); sem ela, texto simples. Cada um é "reservado" (enviado=false -> true) antes de sair: duas chamadas ao mesmo tempo não mandam em dobro.
+export async function run(now = Date.now(), fmt = null) {
+  const rows = await db(`${TABLE}?select=id,numero,texto,quando&enviado=is.false&quando=lte.${encodeURIComponent(new Date(now).toISOString())}&order=quando.asc&limit=50`) || [];
   let sent = 0, failed = 0;
   for (const r of rows) {
-    const claim = await rest(`${TABLE}?id=eq.${r.id}&enviado=is.false`, { method: 'PATCH', prefer: 'return=representation', body: { enviado: true, enviado_em: new Date(now).toISOString() } });
+    const claim = await db(`${TABLE}?id=eq.${r.id}&enviado=is.false`, { method: 'PATCH', prefer: 'return=representation', body: { enviado: true, enviado_em: new Date(now).toISOString() } });
     if (!claim?.length) continue;
-    if (now - Date.parse(r.quando) > 86400_000) { await rest(`${TABLE}?id=eq.${r.id}`, { method: 'PATCH', body: { erro: 'atrasado mais de um dia; não enviado' } }); continue; }
-    try { await whatsapp.send(r.numero, `⏰ Lembrete do Jarvis: ${r.texto}`); sent++; }
-    catch (e) { failed++; await rest(`${TABLE}?id=eq.${r.id}`, { method: 'PATCH', body: { erro: String(e.message || 'falhou').slice(0, 200) } }).catch(() => {}); }
+    if (now - Date.parse(r.quando) > 86400_000) { await db(`${TABLE}?id=eq.${r.id}`, { method: 'PATCH', body: { erro: 'atrasado mais de um dia; não enviado' } }); continue; }
+    let msg = `⏰ Lembrete do Jarvis: ${r.texto}`;
+    if (fmt) try { const t = await fmt(r.texto, r); if (t) msg = `⏰ ${t}`; } catch { /* fica o texto simples */ }
+    try { await whatsapp.send(r.numero, msg); sent++; }
+    catch (e) { failed++; await db(`${TABLE}?id=eq.${r.id}`, { method: 'PATCH', body: { erro: String(e.message || 'falhou').slice(0, 200) } }).catch(() => {}); }
   }
   return { vencidos: rows.length, enviados: sent, falhas: failed };
 }
