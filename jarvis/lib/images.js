@@ -3,7 +3,7 @@
 // devolveu numa busca recente (sem URL arbitrária = sem SSRF por parâmetro). IPs privados são recusados.
 import { lookup } from 'node:dns/promises';
 import net from 'node:net';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { registerSecret } from './secrets.js';
 
 const TTL = 60 * 60_000;          // resultados valem 1 h
@@ -24,6 +24,24 @@ export function imagesStatus() {
 
 const clean = (s, n = 140) => String(s ?? '').replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 const okUrl = u => { try { const x = new URL(u); return ['http:', 'https:'].includes(x.protocol) ? x.href : ''; } catch { return ''; } };
+// Na Vercel cada pedido pode cair numa instância diferente, e o registro em memória não estaria lá. No modo site o ID leva a
+// própria URL, assinada com JARVIS_SESSION_SECRET: o servidor só baixa o que ele mesmo assinou (continua sem URL arbitrária).
+const sealKey = () => { const s = process.env.JARVIS_SITE_ONLY === '1' ? process.env.JARVIS_SESSION_SECRET || '' : ''; return s.length >= 32 ? s : ''; };
+const mac = (k, body) => createHmac('sha256', k).update('img:' + body).digest('base64url').slice(0, 22);
+function newId(url, thumb, title) {
+  const k = sealKey(); if (!k) return randomBytes(8).toString('hex');
+  const body = Buffer.from(JSON.stringify({ u: url, t: thumb && thumb !== url ? thumb : undefined, n: String(title || '').slice(0, 80), e: Date.now() + TTL })).toString('base64url');
+  return `w${body}.${mac(k, body)}`;
+}
+function unseal(id) {
+  const k = sealKey(), m = /^w([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]{22})$/.exec(String(id)); if (!k || !m) return null;
+  const a = Buffer.from(mac(k, m[1])), b = Buffer.from(m[2]); if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  try {
+    const j = JSON.parse(Buffer.from(m[1], 'base64url').toString('utf8')), url = okUrl(j.u);
+    if (!url || !(j.e > Date.now())) return null;
+    return { id, url, thumb: okUrl(j.t) || url, title: clean(j.n) || 'foto', source: '', page: '', exp: j.e };
+  } catch { return null; }
+}
 function prune() { const t = Date.now(); for (const [k, v] of reg) if (v.exp < t) { reg.delete(k); thumbs.delete(k); } }
 
 async function getJSON(url, headers = {}) {
@@ -94,7 +112,7 @@ async function searchOnce(q, { count = 12, safe = true } = {}) {
   for (const it of list) {
     const url = okUrl(it.url), thumb = okUrl(it.thumb) || url;
     if (!url) continue;
-    const id = randomBytes(8).toString('hex');
+    const id = newId(url, thumb, clean(it.title) || q);
     const meta = { id, url, thumb, title: clean(it.title) || q, source: clean(it.source, 60), page: okUrl(it.page), width: +it.width || null, height: +it.height || null,
       license: clean(it.license, 40), creator: clean(it.creator, 60), query: q };
     reg.set(id, { ...meta, exp: Date.now() + TTL });
@@ -148,7 +166,7 @@ export function fileName(meta, type, i) { return `${i != null ? String(i + 1).pa
 
 function entry(id) {
   prune();
-  const m = reg.get(id);
+  const m = reg.get(id) || unseal(id);
   if (!m) throw Object.assign(new Error('Essa imagem expirou. Faça a busca de novo.'), { code: 410 });
   return m;
 }
@@ -214,7 +232,7 @@ export async function zipImages(ids) {
 export function registerUrl(url, { title = '', source = '', page = '' } = {}) {
   const u = okUrl(url); if (!u) return null;
   prune();
-  const id = randomBytes(8).toString('hex');
+  const id = newId(u, u, clean(title) || 'foto');
   reg.set(id, { id, url: u, thumb: u, title: clean(title) || 'foto', source: clean(source, 60), page: okUrl(page), width: null, height: null, license: '', creator: '', query: '', exp: Date.now() + TTL });
   return { id, title: clean(title) || 'foto', source: clean(source, 60), page: okUrl(page) };
 }

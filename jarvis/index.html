@@ -1100,12 +1100,16 @@ function addr(){const p=S.profile;if(!p)return'';return p.address==='neutro'?(p.
 const withAddr=t=>{const a=addr();return a?`${t}, ${a}`:t};
 
 /* ---------- Servidor (todas as escritas levam x-jarvis: proteção contra CSRF) ---------- */
+// Na web o servidor não guarda nada: o perfil dos Ajustes fica neste navegador e vai em cada pedido (JSON em base64).
+const WP_KEY='jarvis.webPerfil';
+function webPerfil(){try{const s=localStorage.getItem(WP_KEY);return s?btoa(String.fromCharCode(...new TextEncoder().encode(s))):''}catch{return ''}}
 async function req(method,u,b){
-  let r;
-  try{r=await fetch(u,{method,headers:method==='GET'?{}:{'content-type':'application/json','x-jarvis':'1'},body:method==='GET'||b===undefined?undefined:JSON.stringify(b)})}
+  let r;const hd=method==='GET'?{}:{'content-type':'application/json','x-jarvis':'1'},wp=webPerfil();if(wp)hd['x-jarvis-perfil']=wp;
+  try{r=await fetch(u,{method,headers:hd,body:method==='GET'||b===undefined?undefined:JSON.stringify(b)})}
   catch{throw Object.assign(new Error(`Sem conexão com o servidor do ${NAME}. Ele está rodando?`),{status:0})}
   let j=null;try{j=await r.json()}catch{}
   if(!r.ok)throw Object.assign(new Error(j?.error||`Erro ${r.status}.`),{status:r.status,data:j});
+  if(S.state?.web&&u==='/api/profile'&&j?.profile)try{const {level,...keep}=j.profile;localStorage.setItem(WP_KEY,JSON.stringify(keep))}catch{}
   return j;
 }
 const api=(u,b={})=>req('POST',u,b);
@@ -1711,7 +1715,7 @@ async function ask(q,opts){
   const r=++run;setMode('think');audio.pause();flash('');voiceWarned=false;clearCache();
   try{
     const d=await api('/api/chat',{text:q,mode:window.jMode?.()||'talk',wake:Date.now()-(window.__wake||0)<120000,files:window.__takeFiles?.()||[],...(opts?.voice?{voice:true,conf:opts.conf,alts:opts.alts}:{}),...(S.state?.web?{history:S.hist}:{})});if(r!==run)return;
-    if(S.state?.web){S.hist.push({role:'user',content:q},{role:'assistant',content:[d.intro,...(d.slides||[]).map(s=>`${s.title}: ${s.narration}`),d.outro].filter(Boolean).join(' ').slice(0,1200)});S.hist=S.hist.slice(-8);webLeft(d.web)}
+    if(S.state?.web){S.hist.push({role:'user',content:q},{role:'assistant',content:[d.intro,...(d.slides||[]).map(s=>`${s.title}: ${s.narration}`),d.outro].filter(Boolean).join(' ').slice(0,1200)});S.hist=S.hist.slice(-8)}
     if(d.heard)$('#you').textContent='“'+d.heard+'”';   // o que o Jarvis entendeu, já corrigido
     if(d.abrirCorreio)window.__mailOpen?.(d.correio?.id);   // correio em pop-up nesta janela (no V, ou no centro)
     planB(d.meta);
@@ -1748,16 +1752,13 @@ function handleQuery(){
   if(sp&&SP[sp])flash(SP[sp],sp!=='ok');
   if(g||c||sp)history.replaceState(null,'','/app');
 }
-/* Teste na web (site publicado): só conversa. O que é do PC (ajustes, modo Code, agenda, e-mails, arquivos) some, a conversa
-   anterior fica neste navegador (vai junto em cada pedido) e a barra mostra quantas mensagens ainda restam hoje. */
+/* Jarvis na web (site publicado): conversa e as integrações que não dependem do PC. O que é do PC (modo Code, agenda,
+   e-mails, arquivos) some; os Ajustes ficam com Conexões e Perfil. A conversa anterior e o perfil ficam neste navegador. */
 S.hist=[];
 function webMode(){
   document.body.classList.add('web');
-  const bar=$('#bar'),q=document.createElement('span');q.id='webq';q.className='chip';bar.insertBefore(q,$('#intBtn'));
-  const dl=document.createElement('a');dl.className='btn pri';dl.href='/baixar';dl.id='webDl';dl.textContent='Baixar o app';bar.append(dl);
-  webLeft(S.state.web);
+  const dl=document.createElement('a');dl.className='btn pri';dl.href='/baixar';dl.id='webDl';dl.textContent='Baixar o app';$('#bar').append(dl);
 }
-function webLeft(w){const q=$('#webq');if(!q||!w)return;q.textContent=`Teste web · ${w.left} de ${w.daily} hoje`;q.title='Mensagens que ainda restam hoje no teste do Jarvis na web. No app para Windows não há limite.';q.classList.toggle('low',w.left<=5)}
 async function boot(){
   setMode('idle');handleQuery();
   try{S.state=await get('/api/state')}catch(e){flash(e.message,true);return}
@@ -1847,6 +1848,7 @@ const _ri=renderInteg;
 renderInteg=function(){_ri();const host=$('#accRows');if(!host||!S.integ)return;const I=S.integ,g=I.gmail,c=I.canva;
   [...host.querySelectorAll('.row')].forEach(r=>{const n=(r.querySelector('.nm')||{}).textContent;if(n==='Gmail'||n==='Canva')r.remove()});
   let cx=document.getElementById('cx');if(!cx){cx=document.createElement('div');cx.id='cx';host.before(cx)}
+  if(S.state?.web){cx.innerHTML=webCards();return}
   const gOn=g.state==='on',cOn=gOn&&g.calendar;
   cx.innerHTML=
    card1({ic:'mail',nm:'Gmail',on:gOn,by:'Google',ds:gOn?(g.trash?'Lê e move para a lixeira sob pedido':'Só leitura. Reautorize para liberar a lixeira')+(g.email?' · '+esc(g.email):''):g.state==='error'?'Erro: '+esc(g.message):(g.configured?'Resume e prioriza seus e-mails':esc(g.message)),extra:gOn?tgl('gmail_trash','Lixeira sob pedido'):'',btn:gOn?okb('gx','Desconectar'):plus('/auth/google',!g.configured)})+
@@ -1857,6 +1859,23 @@ renderInteg=function(){_ri();const host=$('#accRows');if(!host||!S.integ)return;
    card1({ic:'eye',nm:'Visão da tela',on:!!window.__screenOn,by:'seu navegador',ds:window.__screenOn?'Compartilhando. Só olho quando o senhor pedir; nada é gravado':'Compartilhe uma tela ou janela e peça: "olha minha tela"',btn:window.__screenOn?okb('sc','Parar de compartilhar'):'<button class="go" type="button" data-x="sc" aria-label="Compartilhar tela">+</button>'})+
    (()=>{const s=I.spotify||{state:'off'};return card1({ic:'music',nm:'Spotify',on:s.state==='on',by:'Spotify',ds:s.state==='on'?esc(s.message||'Conectado')+' · toca, pula, pausa e diz o que está tocando':s.configured?'Toca, pula, pausa e diz o que está tocando (precisa do Premium para controlar)':esc(s.message||''),btn:s.state==='on'?okb('spx','Desconectar'):plus('/auth/spotify',!s.configured)})})()+
    card1({ic:'pen',nm:'Canva',on:c.state==='on',by:'Canva',ds:c.state==='soon'?'Em breve':esc(c.message||''),btn:c.state==='on'?'<span class="go ok" aria-hidden="true">✓</span>':plus('#',true)})};
+Object.assign(IC,{coin:'<circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.4c-.5-.8-1.5-1.3-2.8-1.3-1.6 0-2.7.8-2.7 2s1.1 1.6 2.7 1.9 2.9.8 2.9 2.1-1.2 2-2.9 2c-1.4 0-2.5-.5-3-1.4M12 6.3v1.8M12 15.9v1.8"/>',
+  ball:'<circle cx="12" cy="12" r="9"/><path d="m12 7.6 4 2.9-1.5 4.6h-5L8 10.5z"/><path d="M12 3v4.6M16 10.5l4.4-1.3M14.5 15.1l2.7 3.8M9.5 15.1l-2.7 3.8M8 10.5 3.6 9.2"/>',
+  news:'<path d="M4 5h13v14H6a2 2 0 0 1-2-2z"/><path d="M17 9h3v8a2 2 0 0 1-2 2M7.5 9h6M7.5 12.5h6M7.5 16h4"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>'});
+function webCards(){
+  const ok='<span class="go ok" aria-hidden="true">✓</span>',app='<a class="go" href="/baixar" aria-label="Baixar o app para Windows" title="Só no app para Windows">↓</a>',city=S.profile?.city?.name;
+  const pc=(ic,nm,by,ds)=>card1({ic,nm,by,ds:ds+' · no app para Windows',btn:app});
+  return '<p class="wsub">Funcionam aqui na web</p>'+
+    card1({ic:'coin',nm:'Câmbio e cripto',on:true,by:'AwesomeAPI',ds:'“Quanto está o dólar?”, “converte 100 euros”, “e o bitcoin?”',btn:ok})+
+    card1({ic:'ball',nm:'Futebol',on:true,by:'ESPN',ds:'Placar, próximo jogo e a tabela do Brasileirão',btn:ok})+
+    card1({ic:'news',nm:'Notícias',on:true,by:'Google Notícias',ds:'Manchetes do dia em formato de jornal, com as fotos',btn:ok})+
+    card1({ic:'sun',nm:'Clima',on:!!city,by:'Open-Meteo',ds:city?'Previsão de '+esc(city)+' na abertura':'Escolha a sua cidade e eu digo a previsão ao abrir',btn:city?ok:'<button class="go" type="button" data-x="wcity" aria-label="Escolher a cidade">+</button>'})+
+    '<p class="wsub">No app para Windows</p>'+
+    pc('mail','Gmail','Google','Resume e prioriza seus e-mails')+pc('drive','Google Drive','Google','Procura e salva seus arquivos')+
+    pc('tasks','Google Tasks','Google','Tarefas e listas por voz')+pc('music','Spotify','Spotify','Toca, pula e pausa músicas')+
+    pc('git','GitHub','GitHub','PRs, CI e issues')+pc('pen','Canva','Canva','Em breve')}
+document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-x=wcity]')){togglePanel(false);openProfile(true)}});
 document.addEventListener('submit',async e=>{const f=e.target.closest&&e.target.closest('form.gk');if(!f)return;e.preventDefault();const p=f.dataset.p;
   try{S.integ.keys[p]=await api('/api/keys/'+p,{key:f.key.value});ghOpen=null;renderInteg()}catch(er){flash(er.message||'Não consegui salvar o token.')}});
 document.addEventListener('click',async e=>{const b=e.target.closest&&e.target.closest('[data-x]');if(!b)return;const x=b.dataset.x,p=b.dataset.p;
@@ -3191,9 +3210,10 @@ f.addEventListener('submit',async e=>{e.preventDefault();const q=inp.value.trim(
 #tx svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 body.mini:not(.mini-v) #tx{display:none}
 /* Teste na web: só o que funciona sem o PC */
-body.web .ibtn,body.web .mode-sw,body.web #intBtn,body.web #quick,body.web #wx,body.web #tx .up,body.web #planb{display:none!important}
-#webq{font:600 11.5px var(--mono);color:var(--acc);border-color:color-mix(in oklab,var(--acc) 40%,var(--line));white-space:nowrap}
-#webq.low{color:#ffb86b;border-color:#ffb86b}
+body.web .ibtn,body.web .mode-sw,body.web #quick,body.web #tx .up,body.web #planb{display:none!important}
+body.web .pnav [data-tab=code],body.web .pnav [data-tab=apps],body.web .pnav [data-tab=agenda],body.web .pnav [data-tab=skills],body.web .pnav [data-tab=projetos]{display:none!important}
+#cx .wsub{grid-column:1/-1;margin:14px 2px 2px;font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+#cx .wsub:first-child{margin-top:0}
 #webDl{height:34px;padding:0 14px;font-size:13px;white-space:nowrap}
 /* V: logo abaixo da barra, só quando você toca em "Digitar" (Esc fecha) */
 body.mini-v #tx{position:fixed;z-index:21;top:56px;left:50%;transform:translateX(-50%);width:min(520px,58vw);margin:0;display:none;background:#0b0c0fee}
@@ -3845,7 +3865,9 @@ function ctDraw(){const c=S.integ?.conta||{on:false},box=ct.querySelector('#ctBo
     <p class="s">O Jarvis está pronto para responder pela sua conta.</p>`
     :`<h4>Conta JARVIS</h4><p class="s">Entre com a mesma conta do site (Google ou e-mail) para o Jarvis começar a responder.</p>
     <div class="bar"><a class="btn pri" href="/auth/conta">Entrar com a conta JARVIS</a><span class="ok" id="ctOk"></span></div>`;
-  ct.querySelector('#ctOut')?.addEventListener('click',async()=>{try{S.integ=await api('/api/conta/sair',{});renderInteg();ctDraw()}catch(er){flash(er.message)}})}
+  ct.querySelector('#ctOut')?.addEventListener('click',async()=>{try{
+    if(S.state?.web){await api('/api/auth/logout',{}).catch(()=>{});try{localStorage.removeItem(WP_KEY)}catch{}location.href='/entrar';return}
+    S.integ=await api('/api/conta/sair',{});renderInteg();ctDraw()}catch(er){flash(er.message)}})}
 window.__ctDraw=ctDraw;
 
 /* ---------- Projetos (memória entre conversas) ---------- */
@@ -3880,8 +3902,9 @@ pj.querySelector('#pjL').addEventListener('click',async e=>{const b=e.target.clo
     pjLoad()}catch(er){note(pj.querySelector('#pjOk'),er.message,true)}});
 
 // Carrega quando o painel abre
-const _tp2=togglePanel;togglePanel=function(force){_tp2(force);if(!S.state?.web&&!document.getElementById('panel').hidden){ctDraw();agLoad();skLoad();pjLoad();abFill()}};
-setTimeout(()=>{if(!S.state?.web){ctDraw();agLoad();skLoad();pjLoad();abFill()}},1500);   // na web os Ajustes não existem
+// Na web só Conexões e Perfil: agenda, skills e projetos moram no PC.
+const _tp2=togglePanel;togglePanel=function(force){_tp2(force);if(!document.getElementById('panel').hidden){ctDraw();abFill();if(!S.state?.web){agLoad();skLoad();pjLoad()}}};
+setTimeout(()=>{ctDraw();abFill();if(!S.state?.web){agLoad();skLoad();pjLoad()}},1500);
 })();
 </script>
 <style id="beta-css">

@@ -10,6 +10,12 @@ export const getProfile = () => readJSON(FILE, null);
 export const isComplete = p => !!(p && p.name && ADDRESS.has(p.address) && p.city?.name);
 
 export function saveProfile(input, current = getProfile()) {
+  const p = cleanProfile(input, current);
+  writeJSON(FILE, p);
+  return p;
+}
+// Confere e aplica o pedido sobre o perfil atual, sem gravar.
+export function cleanProfile(input, current) {
   const p = { ...(current || {}) };
   if ('name' in input) { const n = str(input.name, 60); if (!n) throw Object.assign(new Error('Diga seu nome.'), { code: 400 }); p.name = n; }
   if ('address' in input) { if (!ADDRESS.has(input.address)) throw Object.assign(new Error('Forma de tratamento inválida.'), { code: 400 }); p.address = input.address; }
@@ -55,7 +61,6 @@ export function saveProfile(input, current = getProfile()) {
   p.gmailInvite ||= 'pending';
   p.createdAt ||= new Date().toISOString();
   p.updatedAt = new Date().toISOString();
-  writeJSON(FILE, p);
   return p;
 }
 

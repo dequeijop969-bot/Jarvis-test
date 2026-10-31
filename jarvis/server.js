@@ -16,7 +16,7 @@ import { log, redact } from './lib/secrets.js';
 import * as keys from './lib/keys.js';
 import { loadModels, publicLevels } from './lib/models.js';
 import { friendlyAIError, ProviderError } from './lib/router.js';
-import { getProfile, saveProfile, isComplete, addressing, greetingWord } from './lib/profile.js';
+import { getProfile, saveProfile, cleanProfile, isComplete, addressing, greetingWord } from './lib/profile.js';
 import { geocode, currentWeather, weatherSpeech } from './lib/weather.js';
 import { headlines, newsSpeech, searchNews, jornalDeck, newsImage } from './lib/news.js';
 import * as google from './lib/google.js';
@@ -636,51 +636,81 @@ function guard(req, url) {
   }
 }
 
-/* ---------- Teste do Jarvis na web (site publicado) ----------
-   Na Vercel várias pessoas usam o mesmo servidor e o disco não guarda nada: aqui o Jarvis SÓ CONVERSA (voz, legenda e
-   slides), por pessoa e sem gravar nada no servidor. A conversa anterior vem do navegador de quem fala. Precisa de conta
-   (Supabase ou dono) e da GEMINI_API_KEY na Vercel; usa só o nível 2.5 (Flash Lite), nunca a chave paga.
-   JARVIS_WEB_TRIAL=0 desliga; JARVIS_WEB_DAILY = mensagens por pessoa por dia (padrão 30). */
+/* ---------- Jarvis na web (site publicado) ----------
+   Na Vercel várias pessoas usam o mesmo servidor e o disco não guarda nada: aqui o Jarvis conversa (voz, legenda e slides)
+   e usa as integrações que não dependem do PC (câmbio, cripto, futebol, notícias e clima). Nada fica no servidor: a conversa
+   anterior e o perfil dos Ajustes ficam no navegador de quem fala e vão junto em cada pedido. Precisa de conta (Supabase ou
+   dono) e da GEMINI_API_KEY na Vercel; usa só o nível 2.5, nunca a chave paga. Sem limite diário próprio: o teto é a cota
+   da chave. JARVIS_WEB_TRIAL=0 desliga. */
 const WEB_TRIAL = () => SITE_ONLY && process.env.JARVIS_WEB_TRIAL !== '0' && !!process.env.GEMINI_API_KEY;
-const webDaily = () => Math.max(1, Math.min(500, Number(process.env.JARVIS_WEB_DAILY) || 30));
-const webUse = new Map();   // "pessoa|dia" -> mensagens (por instância; a cota do Gemini é o teto de verdade)
-function webLeft(who) {
-  const day = new Date().toISOString().slice(0, 10), k = `${who.id}|${day}`;
-  if (webUse.size > 5000) for (const key of webUse.keys()) if (!key.endsWith(day)) webUse.delete(key);
-  return { k, left: Math.max(0, webDaily() - (webUse.get(k) || 0)) };
+const WEB_KINDS = new Set(['money', 'futebol', 'news']);
+// Perfil da web: o que a pessoa guardou nos Ajustes (cabeçalho x-jarvis-perfil, JSON em base64), conferido campo a campo.
+// Sem nada guardado, o Jarvis a chama pelo primeiro nome.
+function webPatch(p, raw) {
+  if (raw && typeof raw === 'object') for (const k of ['name', 'address', 'lang', 'city', 'about']) if (k in raw) {
+    try { p = cleanProfile({ [k]: raw[k] }, p); } catch { /* campo inválido fica de fora */ }
+  }
+  return { ...p, level: '2.5' };
 }
-// Sem saber como a pessoa prefere ser tratada, o Jarvis a chama pelo primeiro nome.
-const webProfile = who => ({ name: String(who.name || who.email?.split('@')[0] || 'visitante').slice(0, 60), address: 'neutro', lang: 'pt-BR', level: '2.5' });
-const WEB_INTEG = { gmail: { state: 'off', configured: false, message: 'Só no app para Windows.' }, canva: { state: 'soon', message: 'Em breve.' },
+function webProfile(who, req) {
+  const base = { name: String(who.name || who.email?.split('@')[0] || 'visitante').slice(0, 60), address: 'neutro', lang: 'pt-BR' };
+  let raw = null;
+  try { const h = String(req.headers['x-jarvis-perfil'] || ''); if (h && h.length < 8000) raw = JSON.parse(Buffer.from(h, 'base64').toString('utf8')); } catch { /* ignora */ }
+  return webPatch(base, raw);
+}
+const WEB_INTEG = { web: true, gmail: { state: 'off', configured: false, message: 'Só no app para Windows.' }, canva: { state: 'soon', message: 'Em breve.' },
   keys: { gemini: { configured: true }, anthropic: { configured: false } }, workspace: { active: null, recent: [] }, mcp: [], actions: {} };
-const WEB_PATHS = /^\/(app|index\.html|api\/(state|weather|integrations|greeting|chat|tts|stt|mcp|ui\/(size|conversa)))$/;
+const webInteg = who => ({ ...WEB_INTEG, conta: { on: true, name: who.name || '', email: who.email || '' } });
+const WEB_IMG = /^\/api\/images\/(w[A-Za-z0-9_-]{8,3000}\.[A-Za-z0-9_-]{22})\/(thumb|file)$/;
+const WEB_PATHS = /^\/(app|index\.html|api\/(state|weather|geocode|profile|integrations|greeting|chat|tts|stt|mcp|ui\/(size|conversa)))$/;
 async function siteWeb(req, res, u, M) {
   const p = u.pathname;
   if (M === 'GET' && p === '/api/ui/events') { res.writeHead(204, SEC_HEADERS); res.end(); return true; }   // nada do PC aqui; 204 = o navegador não insiste
-  if (!WEB_TRIAL() || !WEB_PATHS.test(p)) return false;
+  if (!WEB_TRIAL() || !(WEB_PATHS.test(p) || WEB_IMG.test(p))) return false;
   const who = users.userFromReq(req);
   if (M === 'GET' && (p === '/app' || p === '/index.html')) {
     if (!who) { redirect(res, '/entrar?next=/app'); return true; }
     send(res, 200, await readFile(path.join(ROOT, 'index.html')), 'text/html; charset=utf-8', { 'Content-Security-Policy': CSP }); return true;
   }
-  if (!who) throw new HttpError(401, 'Entre na sua conta para testar o Jarvis.');
-  const prof = webProfile(who), q = webLeft(who), web = { left: q.left, daily: webDaily() };
-  if (M === 'GET' && p === '/api/state') { send(res, 200, { assistant: ASSISTANT_NAME, web, needsProfile: false, profile: prof, levels: publicLevels(models).filter(l => l.id === '2.5'), defaultLevel: '2.5', modelWarnings: [], integrations: WEB_INTEG }); return true; }
-  if (M === 'GET' && p === '/api/weather') { send(res, 200, { weather: null }); return true; }
-  if (M === 'GET' && p === '/api/integrations') { send(res, 200, WEB_INTEG); return true; }
+  if (!who) throw new HttpError(401, 'Entre na sua conta para usar o Jarvis.');
+  const prof = webProfile(who, req);
+  // Fotos e escudos: o ID assinado carrega a própria URL, então qualquer instância da Vercel serve a imagem.
+  const im = p.match(WEB_IMG);
+  if (M === 'GET' && im) {
+    try {
+      const out = im[2] === 'thumb' ? await images.getThumb(im[1]) : await images.getFull(im[1]);
+      res.writeHead(200, { 'Content-Type': out.type, ...SEC_HEADERS, 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox", 'Cache-Control': 'private, max-age=3600' });
+      res.end(out.buf); return true;
+    } catch (e) { throw new HttpError(e.code || 502, e.code ? e.message : 'Não consegui carregar essa imagem.'); }
+  }
+  if (M === 'GET' && p === '/api/state') { send(res, 200, { assistant: ASSISTANT_NAME, web: true, needsProfile: false, profile: prof, levels: publicLevels(models).filter(l => l.id === '2.5'), defaultLevel: '2.5', modelWarnings: [], integrations: webInteg(who) }); return true; }
+  if (M === 'GET' && p === '/api/weather') { let weather = null; try { if (prof.city) weather = await currentWeather(prof.city); } catch { /* sem clima */ } send(res, 200, { weather }); return true; }
+  if (M === 'GET' && p === '/api/geocode') {
+    try { send(res, 200, { results: await geocode(u.searchParams.get('q'), prof.lang || 'pt') }); }
+    catch { throw new HttpError(502, 'Busca de cidades indisponível agora.'); }
+    return true;
+  }
+  // Ajustes > Perfil: o servidor só confere e devolve; quem guarda é o navegador.
+  if (M === 'POST' && p === '/api/profile') {
+    const b = await readBody(req), patch = {};
+    for (const k of ['name', 'address', 'city', 'lang', 'about']) if (k in b) patch[k] = b[k];
+    let out; try { out = cleanProfile(patch, prof); } catch (e) { throw new HttpError(e.code || 400, e.message); }
+    send(res, 200, { profile: { ...out, level: '2.5' }, needsProfile: false }); return true;
+  }
+  if (M === 'GET' && p === '/api/integrations') { send(res, 200, webInteg(who)); return true; }
   if (M === 'GET' && p === '/api/mcp') { send(res, 200, { servers: [] }); return true; }
   if (M === 'POST' && (p === '/api/ui/size' || p === '/api/ui/conversa')) { send(res, 200, { ok: true }); return true; }
   if (M === 'POST' && p === '/api/greeting') {
-    send(res, 200, { greeting: `${greetingWord('America/Sao_Paulo')}, ${addressing(prof).short}.`, gmail: false,
-      weatherText: `Este é o teste na web: aqui eu só converso, ${web.daily} mensagens por dia. Agenda, e-mails, arquivos e o Jarvis Code ficam no app para Windows.` }); return true;
+    let weatherText = 'Aqui na web eu converso e trago cotações, futebol e notícias. Agenda, e-mails, arquivos e o Jarvis Code ficam no app para Windows.';
+    if (prof.city) try { const w = await withTimeout(currentWeather(prof.city), 3000); if (w) weatherText = weatherSpeech(w); } catch { /* sem clima */ }
+    send(res, 200, { greeting: `${greetingWord(prof.city?.timezone || 'America/Sao_Paulo')}, ${addressing(prof).short}.`, gmail: false, weatherText }); return true;
   }
   if (M === 'POST' && p === '/api/tts') {
     const b = await readBody(req, 8000);
-    try { send(res, 200, await tts(typeof b.text === 'string' ? b.text.slice(0, 700) : '', { lang: 'pt-BR' })); }
+    try { send(res, 200, await tts(typeof b.text === 'string' ? b.text.slice(0, 700) : '', { lang: prof.lang || 'pt-BR' })); }
     catch (e) { if (e.browser) send(res, 503, { error: e.message, browser: true }); else throw e; }
     return true;
   }
-  if (M === 'POST' && !q.left) throw new HttpError(429, `Acabaram as ${web.daily} mensagens de hoje no teste da web. Amanhã tem mais, ou baixe o app para Windows.`);
   if (M === 'POST' && p === '/api/stt') {
     const b = await readBody(req, 2_500_000);
     const { generate } = await import('./lib/router.js');
@@ -691,9 +721,13 @@ async function siteWeb(req, res, u, M) {
   if (M === 'POST' && p === '/api/chat') {
     const b = await readBody(req, 60_000);
     if (typeof b.text !== 'string' || !b.text.trim()) throw new HttpError(400, 'Escreva ou fale alguma coisa.');
-    webUse.set(q.k, (webUse.get(q.k) || 0) + 1);
-    const out = await chat(models, prof, b.text.slice(0, 1000), '', { web: true, history: b.history });
-    send(res, 200, { ...out, web: { left: q.left - 1, daily: web.daily } }); return true;
+    const text = b.text.slice(0, 1000), it = detectIntent(text, {});
+    if (it && WEB_KINDS.has(it.kind)) {
+      const r = await handleIntent(it, prof, null, text).catch(() => null);
+      if (r) { send(res, 200, r); return true; }
+    }
+    const out = await chat(models, prof, text, '', { web: true, history: b.history });
+    send(res, 200, b.wake === true ? out : await withJornal(out, prof, text)); return true;
   }
   return false;
 }
