@@ -645,7 +645,7 @@ function guard(req, url) {
 const WEB_TRIAL = () => SITE_ONLY && process.env.JARVIS_WEB_TRIAL !== '0' && !!process.env.GEMINI_API_KEY;
 const WEB_KINDS = new Set(['money', 'futebol', 'news']);
 // Perfil da web: o que a pessoa guardou nos Ajustes (cabeçalho x-jarvis-perfil, JSON em base64), conferido campo a campo.
-// Sem nada guardado, o Jarvis a chama pelo primeiro nome.
+// Sem nada guardado, o Jarvis a chama de "senhor" (dá para trocar em Ajustes > Perfil).
 function webPatch(p, raw) {
   if (raw && typeof raw === 'object') for (const k of ['name', 'address', 'lang', 'city', 'about']) if (k in raw) {
     try { p = cleanProfile({ [k]: raw[k] }, p); } catch { /* campo inválido fica de fora */ }
@@ -653,7 +653,7 @@ function webPatch(p, raw) {
   return { ...p, level: '2.5' };
 }
 function webProfile(who, req) {
-  const base = { name: String(who.name || who.email?.split('@')[0] || 'visitante').slice(0, 60), address: 'neutro', lang: 'pt-BR' };
+  const base = { name: String(who.name || who.email?.split('@')[0] || 'visitante').slice(0, 60), address: 'senhor', lang: 'pt-BR' };
   let raw = null;
   try { const h = String(req.headers['x-jarvis-perfil'] || ''); if (h && h.length < 8000) raw = JSON.parse(Buffer.from(h, 'base64').toString('utf8')); } catch { /* ignora */ }
   return webPatch(base, raw);

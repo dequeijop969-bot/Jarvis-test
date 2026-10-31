@@ -73,7 +73,7 @@ try {
   assert.equal((await req('POST', '/api/profile', { address: 'rei' }, ck)).status, 400);
   const wp = Buffer.from(JSON.stringify({ ...pf, name: '<b>Lucca</b>', address: 'rei' })).toString('base64');
   const st2 = await (await fetch(B + '/api/state', { headers: { cookie: ck, 'x-jarvis-perfil': wp } })).json();
-  assert.equal(st2.profile.name, 'bLucca/b'); assert.equal(st2.profile.address, 'neutro', 'campo inválido fica de fora'); assert.equal(st2.profile.about.trabalho, 'dev de jogos');
+  assert.equal(st2.profile.name, 'bLucca/b'); assert.equal(st2.profile.address, 'senhor', 'campo inválido fica de fora (padrão: senhor)'); assert.equal(st2.profile.about.trabalho, 'dev de jogos');
   r = await fetch(B + '/api/chat', { method: 'POST', headers: { 'content-type': 'application/json', 'x-jarvis': '1', cookie: ck, 'x-jarvis-perfil': Buffer.from(JSON.stringify(pf)).toString('base64') }, body: JSON.stringify({ text: 'oi' }) });
   assert.equal(r.status, 200); assert.match(asks.at(-1).sys, /senhor/);
   // Imagem com ID assinado adulterado: recusada.

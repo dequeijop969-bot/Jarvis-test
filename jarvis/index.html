@@ -3635,7 +3635,13 @@ window.__sendFiles=list=>[...(list||[])].slice(0,8).forEach(send);   // botão "
 #panel .pin #cx{margin:0}
 #panel .hint{line-height:1.5}
 @media (max-width:760px){
-  #panel{grid-template-columns:1fr;grid-template-rows:auto auto minmax(0,1fr);height:calc(100dvh - var(--pt,56px) - 8px);border-radius:20px}
+  /* No celular os Ajustes ocupam a tela toda: não dependem da altura da barra (que muda com a barra do navegador) */
+  #panel{inset:0;top:0;left:0;right:0;bottom:0;transform:none;width:100%;height:100dvh;max-height:100dvh;border:0;border-radius:0;z-index:40;
+    grid-template-columns:1fr;grid-template-rows:auto auto minmax(0,1fr);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);animation:none}
+  #panel .pin{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  #panelBk{display:none!important}
+  body:has(#panel:not([hidden])){overflow:hidden}
+  #webDl{padding:7px 12px;font-size:12.5px}
   .pnav{flex-direction:row;border-right:0;border-bottom:1px solid var(--line);padding:8px 10px;overflow-x:auto;scrollbar-width:none}
   .pnav button{width:auto;flex:none;padding:9px 12px;white-space:nowrap}
   .pnav button[aria-selected=true]::before{left:12px;right:12px;top:auto;bottom:2px;width:auto;height:2px}
