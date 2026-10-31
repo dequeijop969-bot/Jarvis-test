@@ -5,12 +5,12 @@ import { registerSecret, forgetSecret, mask } from './secrets.js';
 
 const FILE = 'keys.local.json';
 export const PROVIDERS = {
-  gemini: { label: 'Gemini', env: 'GEMINI_API_KEY' },
+  gemini: { label: 'Chave de IA principal', env: 'GEMINI_API_KEY' },
   // Segunda chave do Gemini (outra conta/projeto, com cota própria): tarefas técnicas e socorro quando a 1ª fica sem cota.
-  gemini2: { label: 'Gemini 2 (tarefas técnicas)', env: 'GEMINI_API_KEY_2' },
+  gemini2: { label: 'Chave de IA 2 (tarefas técnicas)', env: 'GEMINI_API_KEY_2' },
   // Chave PAGA do Gemini (com faturamento): só o nível 5.1 usa, para o crédito não ir embora na conversa do dia a dia.
-  geminipago: { label: 'Gemini pago (nível 5.1)', env: 'GEMINI_API_KEY_PAGO' },
-  anthropic: { label: 'Anthropic', env: 'ANTHROPIC_API_KEY' },
+  geminipago: { label: 'Chave de IA do nível 5.1', env: 'GEMINI_API_KEY_PAGO' },
+  anthropic: { label: 'Chave de IA reserva', env: 'ANTHROPIC_API_KEY' },
   elevenlabs: { label: 'ElevenLabs', env: 'ELEVENLABS_API_KEY', voiceEnv: 'ELEVENLABS_VOICE_ID' },
   // GitHub: dois tokens de ESCOPO FINO (fine-grained), separados. Nada de token clássico nem OAuth App com "repo".
   github_read: { label: 'GitHub (leitura)', env: 'GITHUB_TOKEN_READ', github: true },

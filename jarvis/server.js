@@ -516,7 +516,7 @@ async function siteApp(req, res, u, M) {
     try {
       r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
         method: 'POST', signal: AbortSignal.timeout(55_000), headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY, 'content-type': 'application/json' }, body: JSON.stringify(b.request) });
-    } catch (e) { throw new HttpError(e?.name === 'TimeoutError' ? 504 : 502, 'O Gemini não respondeu a tempo.'); }
+    } catch (e) { throw new HttpError(e?.name === 'TimeoutError' ? 504 : 502, 'A IA não respondeu a tempo.'); }
     const j = await r.json().catch(() => ({}));
     const extra = r.headers.get('retry-after') ? { 'Retry-After': r.headers.get('retry-after') } : {};
     // Repassa a resposta do Gemini como veio (o app trata cota, erro e texto do mesmo jeito que com chave própria).

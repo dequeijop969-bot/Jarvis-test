@@ -45,7 +45,7 @@ async function callGemini(t, req) {
   const key = getKey(t.provider);   // gemini2: a segunda chave, cota própria; geminipago: a chave com faturamento (nível 5.1)
   // Sem chave própria, mas com a conta JARVIS conectada: o pedido vai pelo site, que usa a chave do servidor.
   const viaConta = !key && cloudOk(t.provider);
-  if (!key && !viaConta) throw new ProviderError(t.provider, -1, 'Sem chave do Gemini.');
+  if (!key && !viaConta) throw new ProviderError(t.provider, -1, 'Sem chave de IA.');
   const generationConfig = { maxOutputTokens: maxTokens || 8192 };
   if (t.reasoning) generationConfig.thinkingConfig = { thinkingLevel: t.reasoning };
   if (json) generationConfig.responseMimeType = 'application/json';
@@ -62,7 +62,7 @@ async function callGemini(t, req) {
       : await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(t.model)}:generateContent`, {
         method: 'POST', signal: AbortSignal.timeout(req.timeout || ROUTER.timeoutMs),
         headers: { 'x-goog-api-key': key, 'content-type': 'application/json' }, body: JSON.stringify(request) });
-  } catch (e) { throw new ProviderError(t.provider, e?.name === 'TimeoutError' ? 504 : 0, e?.name === 'TimeoutError' ? 'O Gemini demorou demais.' : viaConta ? 'Sem conexão com o site do JARVIS.' : 'Sem conexão com o Gemini.'); }
+  } catch (e) { throw new ProviderError(t.provider, e?.name === 'TimeoutError' ? 504 : 0, e?.name === 'TimeoutError' ? 'A IA demorou demais.' : viaConta ? 'Sem conexão com o site do JARVIS.' : 'Sem conexão com a IA.'); }
   const j = await r.json().catch(() => ({}));
   // Recusas do próprio site (passe vencido, modelo não liberado, pedido grande demais): mensagem clara, sem insistir.
   if (viaConta && !r.ok && !j.error?.details && j.error && typeof j.error === 'string') {
@@ -76,15 +76,15 @@ async function callGemini(t, req) {
   }
   const parts = j.candidates?.[0]?.content?.parts || [];
   const text = parts.filter(p => !p.thought).map(p => p.text || '').join('').trim();
-  if (!text) throw new ProviderError('gemini', 502, 'Resposta vazia do Gemini.');
+  if (!text) throw new ProviderError('gemini', 502, 'A IA respondeu vazio.');
   return text;
 }
 
 async function callAnthropic(t, req) {
   const { system, messages, maxTokens } = req;
   const key = getKey('anthropic');
-  if (!key) throw new ProviderError('anthropic', -1, 'Sem chave da Anthropic.');
-  if (messages.some(m => m.audio)) throw new ProviderError('anthropic', 415, 'A Anthropic não recebe áudio por aqui.');   // transcrição: só o Gemini
+  if (!key) throw new ProviderError('anthropic', -1, 'Sem chave de IA reserva.');
+  if (messages.some(m => m.audio)) throw new ProviderError('anthropic', 415, 'A IA reserva não recebe áudio por aqui.');   // transcrição: só o Gemini
   let r;
   try {
     r = await fetch('https://api.anthropic.com/v1/messages', {

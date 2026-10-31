@@ -119,7 +119,7 @@
   <div class="strip">
     <div class="wrap">
       <div><b>pt-BR <em>nativo</em></b><span>Fala, entende e responde em português</span></div>
-      <div><b>Gemini <em>ou</em> Claude</b><span>Com plano B se um cair</span></div>
+      <div><b>IA <em>de ponta</em></b><span>Com plano B se uma conexão cair</span></div>
       <div><b>Voz <em>neural</em></b><span>Antonio, da Microsoft: grátis e já configurada</span></div>
       <div><b>100% <em>local</em></b><span>Roda no seu PC; dados ficam com você</span></div>
     </div>
@@ -269,7 +269,7 @@
 
       <!-- Palco: o próprio Jarvis Code, grande, mostrando cada um dos seus modos (os mesmos quadros do app) -->
       <div class="jcstage rv" id="jcStage">
-        <div class="hxfloor" aria-hidden="true">
+        <div class="floor" aria-hidden="true">
           <div class="spot"></div>
           <div class="actor" id="stageActor"><span class="say" id="stageSay"></span><img alt="" src="/jc/andar_01.png"></div>
           <div class="shadow" id="stageShadow"></div>
@@ -485,18 +485,22 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 (() => {
   const hx = document.getElementById('hx'); if (!hx) return;
   const FINE = matchMedia('(pointer: fine)').matches;
+  // Celular: a poeira fica mais rala e desenha a 30 quadros por segundo (o anel já fica parado pelo CSS).
+  const LITE = matchMedia('(max-width: 760px), (pointer: coarse)').matches;
+  let skip = false;
   const cv = document.getElementById('hxDust'), ctx = cv.getContext('2d');
   let W, H, pts = [], mx = 0, my = 0, tx = 0, ty = 0, vis = true;
   function size() {
-    const dpr = Math.min(2, devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    pts = Array.from({ length: Math.round(W * H / 9000) }, () => ({ x: Math.random() * W, y: Math.random() * H, z: .3 + Math.random() * .7, c: Math.random() < .7 ? '242,179,61' : '95,212,255', p: Math.random() * 6 }));
+    const dpr = LITE ? 1 : Math.min(2, devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pts = Array.from({ length: Math.round(W * H / (LITE ? 26000 : 9000)) }, () => ({ x: Math.random() * W, y: Math.random() * H, z: .3 + Math.random() * .7, c: Math.random() < .7 ? '242,179,61' : '95,212,255', p: Math.random() * 6 }));
   }
   addEventListener('resize', size); size();
   addEventListener('pointermove', e => { tx = e.clientX / innerWidth - .5; ty = e.clientY / innerHeight - .5; }, { passive: true });
   new IntersectionObserver(es => { vis = es[0].isIntersecting; }).observe(hx);
   const layers = [...hx.querySelectorAll('.arc[data-depth]')];
   (function loop(t) {
-    if (vis) {
+    if (LITE) skip = !skip;
+    if (vis && !skip) {
       mx += (tx - mx) * .05; my += (ty - my) * .05;
       ctx.clearRect(0, 0, W, H);
       for (const p of pts) {

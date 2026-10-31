@@ -1296,19 +1296,16 @@ function drawOrb(now){
 function renderBrand(){const b=$('#brand');b.replaceChildren();[...NAME].forEach((c,i)=>{const e=document.createElement(i===1?'b':'span');e.textContent=c;b.append(e)});document.title=MINI?NAME+' · flutuante':NAME}   // o Jarvis Desktop (Floating.cs) acha a janela do V por este sufixo: não mudar
 function renderLevels(){
   const sel=$('#lvl'),cur=S.profile?.level||S.state.defaultLevel;
-  // Igual à barra do V: nível e nome do modelo ("5.1 · Argon"); se a última resposta veio do plano B, avisa qual.
-  const m=window.__lastMeta,b=m&&m.degraded&&m.model?` · plano B: ${modelShort(m.model)}`:'';
+  // Igual à barra do V: o nível e a descrição ("5.1 · o mais capaz"), sem nome de modelo; avisa quando a resposta veio do plano B.
+  const m=window.__lastMeta,b=m&&m.degraded&&m.model?' · plano B':'';
   sel.replaceChildren(...S.levels.map(l=>{const o=document.createElement('option');o.value=l.id;o.disabled=!l.ok;
-    o.textContent=`${l.id} · ${l.ok?modelShort(l.model):'sem modelo'}${l.id===cur?b:''}`;o.title=`${l.name}: ${l.label}`;o.selected=l.id===cur;return o}));
+    o.textContent=`${l.id} · ${l.ok?l.label:'indisponível'}${l.id===cur?b:''}`;o.title=`${NAME} ${l.id}: ${l.label}`;o.selected=l.id===cur;return o}));
   sel.classList.toggle('warn',!!b);
   $('#lvSum').textContent=S.levels.map(l=>`${l.name}: ${l.ok?`${l.provider} / ${l.model}`:'a definir'}`).join(' · ');
   const w=S.state.modelWarnings||[];$('#mWarn').replaceChildren(...w.map(t=>{const p=document.createElement('p');p.className='warn';p.textContent=t;return p}));
   const L=S.levels.find(l=>l.id===cur);
   sel.title=`Modelo da conversa: ${L?`${L.name} (${L.model})`:'padrão'}${m?.model?` · última resposta: ${m.model}`:''}. Arquivos usam o 5.1 quando ele tem chave.`;
 }
-// gemini-4-argon → Argon, gemini-3.5-flash-lite → Flash Lite 3.5, gemini-3.8-flash → Flash 3.8
-function modelShort(m){return String(m||'').replace(/^(gemini|claude)-/i,'').split('-').map(w=>/^\d/.test(w)?w:w[0].toUpperCase()+w.slice(1)).join(' ')
-  .replace(/^(\d[\d.]*) (.+)$/,'$2 $1').replace(/^Argon 4$/,'Argon')}
 $('#lvl').addEventListener('change',async e=>{
   const v=e.target.value;
   try{const r=await api('/api/profile',{level:v});S.profile=r.profile;window.__lastMeta=null;renderLevels();flash(`Pronto: agora sou o ${NAME} ${v}.`)}
@@ -1324,7 +1321,7 @@ async function refreshWeather(){
 }
 function planB(meta){const el=$('#planb');
   if(meta?.model){window.__lastMeta=meta;if(S.state)renderLevels()}
-  el.hidden=true}   // o aviso de plano B agora fica no próprio seletor de modelo (laranja, "plano B: Flash 3.8")
+  el.hidden=true}   // o aviso de plano B agora fica no próprio seletor de nível (laranja, "plano B")
 
 /* ---------- Painel de ajustes ---------- */
 const ST_TXT={on:'Conectado',off:'Não conectado',error:'Erro',soon:'Em breve'};
@@ -3249,16 +3246,14 @@ function pickKeep(){
     clearTimeout(window.__vIdle);window.__vIdle=setTimeout(()=>{if(mode==='listen'&&!$('#you').textContent.trim()&&Date.now()-window.__vLast>9000)try{rec?.stop()}catch{}},9500)},400),{once:true});
 }
 let lastBar=null;
-// Modelo no V: o nível escolhido e o nome do modelo ("5.1 · Argon"); dá para trocar ali mesmo. Se a última resposta veio
-// do plano B, o chip avisa qual modelo respondeu de fato.
-const mShort=m=>String(m||'').replace(/^gemini-/i,'').replace(/^claude-/i,'').split('-').map(w=>/^\d/.test(w)?w:w[0].toUpperCase()+w.slice(1)).join(' ')
-  .replace(/^(\d[\d.]*) (.+)$/,'$2 $1').replace(/^Argon 4$/,'Argon');   // gemini-4-argon → Argon, gemini-3.8-flash → Flash 3.8
+// Nível no V: o nível escolhido e a descrição ("5.1 · o mais capaz"), sem nome de modelo; dá para trocar ali mesmo.
+// Se a última resposta veio do plano B, o chip fica laranja.
 function lvlChip(){
   const lv=S.levels||[],cur=S.profile?.level||S.state?.defaultLevel,L=lv.find(l=>l.id===cur),m=window.__lastMeta;
-  const b=m&&m.degraded&&m.model?` · plano B: ${mShort(m.model)}`:'';
-  return `<label class="vb-lv${b?' warn':''}" title="${esc(`Modelo da conversa: ${L?`${L.name} (${L.model})`:'padrão'}${m?.model?` · última resposta: ${m.model}`:''}. Arquivos usam o 5.1 quando ele tem chave.`)}">`+
+  const b=m&&m.degraded&&m.model?' · plano B':'';
+  return `<label class="vb-lv${b?' warn':''}" title="${esc(`Nível da conversa: ${L?`${NAME} ${L.id} (${L.label})`:'padrão'}${b?' · a última resposta veio do plano B':''}. Arquivos seguem o nível escolhido.`)}">`+
     `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2.5"/><path d="M9 2.5v3M15 2.5v3M9 18.5v3M15 18.5v3M2.5 9h3M2.5 15h3M18.5 9h3M18.5 15h3"/></svg>`+
-    `<select aria-label="Modelo da conversa">${lv.map(l=>`<option value="${l.id}"${l.id===cur?' selected':''}${l.ok?'':' disabled'}>${esc(l.id)} · ${esc(l.ok?mShort(l.model):'sem modelo')}${l.id===cur?esc(b):''}</option>`).join('')}</select></label>`;
+    `<select aria-label="Nível do Jarvis">${lv.map(l=>`<option value="${l.id}"${l.id===cur?' selected':''}${l.ok?'':' disabled'}>${esc(l.id)} · ${esc(l.ok?l.label:'indisponível')}${l.id===cur?esc(b):''}</option>`).join('')}</select></label>`;
 }
 vBar.addEventListener('change',async e=>{const s=e.target.closest('.vb-lv select');if(!s)return;window.__vLast=Date.now();
   try{const r=await api('/api/profile',{level:s.value});S.profile=r.profile;window.__lastMeta=null;renderLevels();flash(`Pronto: agora sou o ${NAME} ${s.value}.`)}catch(er){flash(er.message)}

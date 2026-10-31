@@ -504,3 +504,18 @@ footer .wrap{display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:32px 40px;alig
 }
 main>section:last-child{padding-bottom:clamp(40px,6vw,72px)}
 footer .wrap{border-top:0}
+
+/* Hero no celular (tela estreita ou toque): o anel fica parado e saem os efeitos que redesenham a tela a cada quadro
+   (camadas com máscara girando, brilho borrado, vidro fosco, grão animado, borda girando). Fica a poeira, mais rala, e o Jarvis Code. */
+@media (max-width:760px),(pointer:coarse){
+  .hx .noise,.hx .arc.glow,.hx .arc .comet,.hx .arc .pulse{display:none}
+  .hx .arc .r,.hx .arc .txt{animation:none}
+  .hx .arc{will-change:auto}
+  .hx .plate{backdrop-filter:none;background:linear-gradient(180deg,#15171c,#0b0c0f)}
+  .hx .plate::before{animation:none;background:linear-gradient(120deg,var(--acc2),transparent 35%,transparent 65%,var(--code))}
+  .hx .sub{backdrop-filter:none;background:#0b0c0fe6}
+  .hx h1 .serif{animation:hx-word 1s var(--ease) forwards;animation-delay:calc(var(--i) * 110ms + 300ms)}
+  .hx h1 .w{filter:none}
+  .hx .btn.pri::before{display:none}
+  .nav .wrap{backdrop-filter:none;background:#14161ae6}
+}
