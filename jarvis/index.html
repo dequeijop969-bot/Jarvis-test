@@ -1866,14 +1866,17 @@ Object.assign(IC,{coin:'<circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.4c-.5-
 function webCards(){
   const ok='<span class="go ok" aria-hidden="true">✓</span>',app='<a class="go" href="/baixar" aria-label="Baixar o app para Windows" title="Só no app para Windows">↓</a>',city=S.profile?.city?.name;
   const pc=(ic,nm,by,ds)=>card1({ic,nm,by,ds:ds+' · no app para Windows',btn:app});
+  const I=S.integ||{},g=I.gmail||{},sp=I.spotify||{},gOn=g.state==='on',sOn=sp.state==='on',soon='Ainda não liberado no site';
   return '<p class="wsub">Funcionam aqui na web</p>'+
     card1({ic:'coin',nm:'Câmbio e cripto',on:true,by:'AwesomeAPI',ds:'“Quanto está o dólar?”, “converte 100 euros”, “e o bitcoin?”',btn:ok})+
     card1({ic:'ball',nm:'Futebol',on:true,by:'ESPN',ds:'Placar, próximo jogo e a tabela do Brasileirão',btn:ok})+
     card1({ic:'news',nm:'Notícias',on:true,by:'Google Notícias',ds:'Manchetes do dia em formato de jornal, com as fotos',btn:ok})+
     card1({ic:'sun',nm:'Clima',on:!!city,by:'Open-Meteo',ds:city?'Previsão de '+esc(city)+' na abertura':'Escolha a sua cidade e eu digo a previsão ao abrir',btn:city?ok:'<button class="go" type="button" data-x="wcity" aria-label="Escolher a cidade">+</button>'})+
+    card1({ic:'mail',nm:'Gmail',on:gOn,by:'Google',ds:gOn?'Pergunte “tenho e-mail novo?”'+(g.email?' · '+esc(g.email):''):g.configured?'Resume seus e-mails não lidos':soon,btn:gOn?okb('gx','Desconectar'):plus('/auth/google',!g.configured)})+
+    card1({ic:'drive',nm:'Google Drive',on:!!I.gdrive?.on,by:'Google',ds:I.gdrive?.on?'“Procura o contrato no Drive”, “meus arquivos recentes”':gOn?'Reconecte o Google marcando a caixa do Drive':g.configured?'Procura seus arquivos':soon,btn:I.gdrive?.on?ok:plus('/auth/google',!g.configured)})+
+    card1({ic:'tasks',nm:'Google Tasks',on:!!I.gtasks?.on,by:'Google',ds:I.gtasks?.on?'“Põe comprar pão na lista”, “quais minhas tarefas?”':gOn?'Reconecte o Google marcando a caixa do Tasks':g.configured?'Tarefas e listas por voz':soon,btn:I.gtasks?.on?ok:plus('/auth/google',!g.configured)})+
+    card1({ic:'music',nm:'Spotify',on:sOn,by:'Spotify',ds:sOn?esc(sp.message||'Conectado')+' · pula, pausa e diz o que está tocando':sp.configured?'Pula, pausa e diz o que está tocando (Premium)':soon,btn:sOn?okb('spx','Desconectar'):plus('/auth/spotify',!sp.configured)})+
     '<p class="wsub">No app para Windows</p>'+
-    pc('mail','Gmail','Google','Resume e prioriza seus e-mails')+pc('drive','Google Drive','Google','Procura e salva seus arquivos')+
-    pc('tasks','Google Tasks','Google','Tarefas e listas por voz')+pc('music','Spotify','Spotify','Toca, pula e pausa músicas')+
     pc('git','GitHub','GitHub','PRs, CI e issues')+pc('pen','Canva','Canva','Em breve')}
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-x=wcity]')){togglePanel(false);openProfile(true)}});
 document.addEventListener('submit',async e=>{const f=e.target.closest&&e.target.closest('form.gk');if(!f)return;e.preventDefault();const p=f.dataset.p;

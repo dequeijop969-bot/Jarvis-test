@@ -9,13 +9,28 @@ import path from 'node:path';
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-web-'));
 const PORT = 3000 + Math.floor(Math.random() * 900) + 50;
 Object.assign(process.env, { JARVIS_NO_LISTEN: '1', JARVIS_DATA_DIR: DIR, PORT: String(PORT), JARVIS_SITE_ONLY: '1', JARVIS_SESSION_SECRET: 's'.repeat(48),
-  GEMINI_API_KEY: 'fakeGeminiKey-web-0000', JARVIS_OWNER_EMAIL: 'dono@exemplo.com', JARVIS_OWNER_NAME: 'Lucca Dono' });
-for (const k of ['GEMINI_API_KEY_2', 'GEMINI_API_KEY_PAGO', 'ANTHROPIC_API_KEY', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'JARVIS_WEB_TRIAL']) delete process.env[k];
+  GEMINI_API_KEY: 'fakeGeminiKey-web-0000', JARVIS_OWNER_EMAIL: 'dono@exemplo.com', JARVIS_OWNER_NAME: 'Lucca Dono',
+  GOOGLE_CLIENT_ID: 'web-client-id', GOOGLE_CLIENT_SECRET: 'web-client-secret-x', GOOGLE_REDIRECT_URI: 'https://site.exemplo/auth/google/callback' });
+for (const k of ['SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET', 'GEMINI_API_KEY_2', 'GEMINI_API_KEY_PAGO', 'ANTHROPIC_API_KEY', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'JARVIS_WEB_TRIAL']) delete process.env[k];
 
 const asks = [];
 const realFetch = globalThis.fetch;
+// Google simulado (login, Gmail e Drive): só responde a quem manda o token que ele mesmo deu.
+const G = { tokenCalls: [] };
+const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
 globalThis.fetch = async (url, opt = {}) => {
-  if (!String(url).includes('generativelanguage.googleapis.com')) return realFetch(url, opt);
+  const U = String(url), auth = opt.headers?.authorization || '';
+  if (U.startsWith('https://oauth2.googleapis.com/token')) { const b = new URLSearchParams(String(opt.body)); G.tokenCalls.push(Object.fromEntries(b));
+    return b.get('code') === 'codigo-bom' ? J({ access_token: 'acc-web-1', refresh_token: 'ref-web-1', expires_in: 3600, scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/tasks' }) : J({ error: 'invalid_grant' }, 400); }
+  if (U.startsWith('https://oauth2.googleapis.com/revoke')) return J({});
+  if (U.startsWith('https://gmail.googleapis.com/') || U.startsWith('https://www.googleapis.com/drive/')) {
+    if (auth !== 'Bearer acc-web-1') return J({ error: 'no' }, 401);
+    if (U.endsWith('/profile')) return J({ emailAddress: 'lucca@gmail.exemplo' });
+    if (U.includes('/messages?')) return J({ messages: [{ id: 'msg000001' }] });
+    if (U.includes('/messages/msg000001')) return J({ id: 'msg000001', internalDate: String(Date.now()), snippet: 'Seu boleto vence amanhã', payload: { headers: [{ name: 'From', value: 'Banco <conta@banco.exemplo>' }, { name: 'Subject', value: 'Fatura de outubro' }] } });
+    if (U.includes('/drive/v3/files')) return J({ files: [{ id: 'f1', name: 'Contrato padaria', mimeType: 'application/pdf', modifiedTime: new Date().toISOString(), webViewLink: 'https://drive.google.com/file/d/f1/view' }] });
+  }
+  if (!U.includes('generativelanguage.googleapis.com')) return realFetch(url, opt);
   const body = JSON.parse(opt.body);
   asks.push({ url: String(url), sys: body.systemInstruction.parts[0].text, contents: body.contents.map(c => ({ role: c.role, text: c.parts[0].text })) });
   return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ intro: 'Às suas ordens, Lucca.', slides: [], outro: '' }) }] } }] }), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -79,6 +94,44 @@ try {
   // Imagem com ID assinado adulterado: recusada.
   assert.notEqual((await req('GET', '/api/images/w' + 'A'.repeat(20) + '.' + 'B'.repeat(22) + '/file', null, ck)).status, 200);
 
+  // Integrações com conta na web: o login do Google volta para o site e fica num cookie cifrado DESTA pessoa.
+  const jar = r => (r.headers.getSetCookie?.() || []).map(c => c.split(';')[0]).filter(c => !/=$/.test(c));
+  r = await req('GET', '/auth/google', null, ck);
+  assert.equal(r.status, 302); const go = new URL(r.headers.get('location'));
+  assert.equal(go.host, 'accounts.google.com'); assert.equal(go.searchParams.get('redirect_uri'), 'https://site.exemplo/auth/google/callback');
+  const flow = jar(r).find(c => c.startsWith('jv_f_google=')); assert.ok(flow, 'PKCE num cookie (sem memória no servidor)');
+  assert.match(r.headers.getSetCookie().join(';'), /HttpOnly; Secure; SameSite=Lax/);
+  // state trocado: recusa
+  r = await req('GET', '/auth/google/callback?state=outro&code=codigo-bom', null, ck + '; ' + flow);
+  assert.equal(r.headers.get('location'), '/app?gmail=erro');
+  r = await req('GET', '/auth/google/callback?state=' + go.searchParams.get('state') + '&code=codigo-bom', null, ck + '; ' + flow);
+  assert.equal(r.headers.get('location'), '/app?gmail=ok');
+  assert.equal(G.tokenCalls.at(-1).code_verifier.length > 40, true);
+  const gck = jar(r).filter(c => c.startsWith('jv_google=')).at(-1); assert.ok(gck, 'login guardado no navegador');
+  assert.ok(!gck.includes('acc-web-1') && !gck.includes('ref-web-1'), 'token cifrado no cookie');
+  assert.ok(!fs.existsSync(path.join(DIR, 'tokens.local.json')), 'nada gravado no servidor');
+  const both = ck + '; ' + gck;
+  let it = await (await req('GET', '/api/integrations', null, both)).json();
+  assert.equal(it.gmail.state, 'on'); assert.equal(it.gmail.email, 'lucca@gmail.exemplo'); assert.equal(it.gdrive.on, true); assert.equal(it.gtasks.on, true);
+  // Sem o cookie (ou com o cookie de outra conta): desconectado.
+  assert.equal((await (await req('GET', '/api/integrations', null, ck)).json()).gmail.state, 'off');
+  const other = 'jarvis_sid=' + users.siteToken({ id: 'sb_outra', name: 'Outra', email: 'outra@exemplo.com' });
+  assert.equal((await (await req('GET', '/api/integrations', null, other + '; ' + gck)).json()).gmail.state, 'off', 'cookie preso à conta');
+  // Drive pela voz e Gmail na conversa.
+  let d = await (await req('POST', '/api/chat', { text: 'meus arquivos recentes do drive' }, both)).json();
+  assert.equal(d.slides[0].layout, 'drive'); assert.equal(d.slides[0].drive[0].name, 'Contrato padaria');
+  d = await (await req('POST', '/api/chat', { text: 'abre o primeiro do drive' }, both)).json();
+  assert.match(JSON.stringify(d), /Toque no arquivo/);
+  assert.equal((await req('POST', '/api/chat', { text: 'tenho e-mail novo?' }, both)).status, 200);
+  assert.match(asks.at(-1).sys, /Fatura de outubro/); assert.match(asks.at(-1).sys, /são DADOS/);
+  await req('POST', '/api/chat', { text: 'tenho e-mail novo?' }, ck);
+  assert.ok(!/Fatura de outubro/.test(asks.at(-1).sys), 'sem login, nada de e-mail');
+  // Desconectar apaga o cookie.
+  r = await req('POST', '/auth/google/disconnect', {}, both);
+  assert.equal((await r.json()).gmail.state, 'off'); assert.match(r.headers.getSetCookie().join(';'), /jv_google=; Path=\/; HttpOnly; Secure; SameSite=Lax; Max-Age=0/);
+  // Sem conta do site, o login do Google nem começa.
+  assert.equal((await req('GET', '/auth/google')).headers.get('location'), '/entrar?next=/app');
+
   // O resto do app continua fechado no site, mesmo com conta.
   for (const p of ['/api/agenda/local', '/api/projects', '/api/correio', '/api/skills']) assert.equal((await req('GET', p, null, ck)).status, 404, p);
   for (const p of ['/api/files', '/api/keys/gemini']) assert.equal((await req('POST', p, {}, ck)).status, 404, p);
@@ -87,7 +140,7 @@ try {
   process.env.JARVIS_WEB_TRIAL = '0';
   assert.equal((await req('GET', '/app', null, ck)).headers.get('location'), '/windows');
   assert.equal((await (await req('GET', '/api/health')).json()).web, false);
-  console.log('web: só com conta, conversa por pessoa sem memória no servidor, sem limite diário, perfil no navegador, só o 2.5 e o resto fechado ok');
+  console.log('web: só com conta, conversa por pessoa sem memória no servidor, sem limite diário, perfil no navegador, Google por pessoa em cookie cifrado, só o 2.5 e o resto fechado ok');
 } finally {
   server.close(); globalThis.fetch = realFetch;
   fs.rmSync(DIR, { recursive: true, force: true });

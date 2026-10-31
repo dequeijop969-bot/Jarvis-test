@@ -1,5 +1,5 @@
 // Gmail SOMENTE LEITURA (escopo gmail.readonly). Nada é enviado, apagado, arquivado ou alterado.
-import { startFlow, finishFlow, getTokens, setTokens } from './oauth.js';
+import { startFlow, finishFlow, getTokens, setTokens, webTokens } from './oauth.js';
 import { PORT, DEMO } from './config.js';
 import { log } from './secrets.js';
 
@@ -31,9 +31,10 @@ const cfg = () => ({
 });
 export const googleConfigured = () => DEMO || !!(cfg().id && cfg().secret);
 let lastError = null;
+const lastErr = () => lastError;
 
 export function googleStatus() {
-  const t = getTokens('google');
+  const t = getTokens('google'), lastError = webTokens.getStore() ? null : lastErr();
   if (!googleConfigured()) return { state: 'off', configured: false, message: 'Para usar Gmail e Agenda do Google, coloque GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no arquivo .env do Jarvis.' };
   if (lastError && !t) return { state: 'error', configured: true, message: lastError };
   if (!t) return { state: 'off', configured: true, message: 'Não conectado.' };
