@@ -2,7 +2,7 @@
 // o Jarvis cria (drive.file: só os arquivos que ele mesmo enviou, numa pasta "Jarvis"). Nada é apagado nem alterado.
 import fs from 'node:fs';
 import path from 'node:path';
-import { gfetch, canDrive, canDriveSave } from './google.js';
+import { gfetch, canDrive, canDriveSave, canDriveEdit, canDocs } from './google.js';
 
 const API = 'https://www.googleapis.com/drive/v3';
 const FIELDS = 'files(id,name,mimeType,modifiedTime,webViewLink,owners(displayName),size,shortcutDetails)';
@@ -47,12 +47,66 @@ export async function upload(file, name) {
   return { ...pack(f), folderLink: folder.webViewLink || '' };
 }
 
+/* ---------- Alterar (precisa da permissão "drive" completa; texto de Documento, da "documents") ---------- */
+const needEdit = () => { if (!canDriveEdit()) throw Object.assign(new Error('Para eu alterar o seu Drive, reconecte o Google em Ajustes marcando a permissão de ver, editar e excluir arquivos do Drive.'), { code: 403 }); };
+const FOLDER = 'application/vnd.google-apps.folder', GDOC = 'application/vnd.google-apps.document';
+// O arquivo (ou pasta) que mais combina com o nome dito: nome igual primeiro, depois o mais recente da busca.
+export async function find(name, { folder = false } = {}) {
+  const q = String(name || '').trim(); if (!q) return null;
+  const list = (await search(q, 10)).filter(f => (folder ? f.mime === FOLDER : true));
+  const n = q.toLowerCase();
+  return list.find(f => f.name.toLowerCase() === n) || list.find(f => f.name.toLowerCase().startsWith(n)) || list[0] || null;
+}
+export async function rename(file, newName) {
+  needEdit();
+  return pack(await gfetch(`${API}/files/${encodeURIComponent(file.id)}?fields=${encodeURIComponent('id,name,mimeType,modifiedTime,webViewLink')}&supportsAllDrives=true`, { method: 'PATCH', body: { name: String(newName).slice(0, 200) } }));
+}
+export async function move(file, folder) {
+  needEdit();
+  const cur = await gfetch(`${API}/files/${encodeURIComponent(file.id)}?fields=parents&supportsAllDrives=true`);
+  const u = `${API}/files/${encodeURIComponent(file.id)}?${new URLSearchParams({ addParents: folder.id, removeParents: (cur?.parents || []).join(','), fields: 'id,name,mimeType,modifiedTime,webViewLink', supportsAllDrives: 'true' })}`;
+  return pack(await gfetch(u, { method: 'PATCH', body: {} }));
+}
+export async function createFolder(name, parent = null) {
+  needEdit();
+  return pack(await gfetch(`${API}/files?fields=id,name,mimeType,modifiedTime,webViewLink`, { method: 'POST', body: { name: String(name).slice(0, 200), mimeType: FOLDER, ...(parent ? { parents: [parent.id] } : {}) } }));
+}
+// Documento Google com o texto (o Drive converte texto simples em Documento; não precisa da API do Docs).
+export async function createDoc(name, text, parent = null) {
+  if (!canDriveSave()) throw Object.assign(new Error('Reconecte o Google em Ajustes marcando a permissão do Drive.'), { code: 403 });
+  const boundary = 'jarvis' + Date.now().toString(36);
+  const meta = JSON.stringify({ name: String(name).slice(0, 200), mimeType: GDOC, ...(parent ? { parents: [parent.id] } : {}) });
+  const body = Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${String(text || '')}\r\n--${boundary}--`, 'utf8');
+  return pack(await gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,modifiedTime,webViewLink', { method: 'POST', body, raw: true, headers: { 'content-type': `multipart/related; boundary=${boundary}` } }));
+}
+const needDocs = f => {
+  if (f.mime !== GDOC) throw Object.assign(new Error(`"${f.name}" não é um Documento Google; só consigo editar o texto de Documentos.`), { code: 400 });
+  if (!canDocs()) throw Object.assign(new Error('Para eu editar o texto de Documentos, reconecte o Google em Ajustes marcando a permissão do Google Docs.'), { code: 403 });
+};
+export async function appendText(file, text) {
+  needDocs(file);
+  const doc = await gfetch(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(file.id)}?fields=body(content(endIndex))`);
+  const end = Math.max(1, (doc?.body?.content || []).reduce((m, c) => Math.max(m, c.endIndex || 1), 1) - 1);
+  await gfetch(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(file.id)}:batchUpdate`, { method: 'POST', body: { requests: [{ insertText: { location: { index: end }, text: '\n' + String(text) } }] } });
+  return file;
+}
+export async function replaceText(file, from, to) {
+  needDocs(file);
+  const r = await gfetch(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(file.id)}:batchUpdate`, { method: 'POST', body: { requests: [{ replaceAllText: { containsText: { text: String(from), matchCase: false }, replaceText: String(to) } }] } });
+  return r?.replies?.[0]?.replaceAllText?.occurrencesChanged || 0;
+}
+export async function trash(id) {
+  needEdit();
+  return pack(await gfetch(`${API}/files/${encodeURIComponent(id)}?fields=id,name,mimeType,modifiedTime,webViewLink&supportsAllDrives=true`, { method: 'PATCH', body: { trashed: true } }));
+}
+
 // Entende o pedido: { op:'buscar', q } | { op:'recentes' } | { op:'salvar' } | { op:'abrir', n } | null
 const foldT = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim();
 export function parse(text) {
   const t = foldT(text).replace(/^(jarvis|ei|por favor) /, '');
   if (!/\bdrive\b/.test(t) && !/^abre o (primeiro|segundo|terceiro|quarto|quinto)( arquivo)?$/.test(t)) return null;
-  if (/\b(salva|salvar|sobe|subir|manda|mandar|envia|enviar|guarda|guardar|coloca|bota)\b.*\b(no|pro|para o|pra o|ao) (meu )?drive\b/.test(t)) return { op: 'salvar' };
+  if (/\b(salva|salvar|sobe|subir|manda|mandar|envia|enviar|guarda|guardar|coloca|bota)\b.*\b(no|pro|para o|pra o|ao) (meu )?drive\b/.test(t) && !/\b(pasta|documento|doc)\b/.test(t)) return { op: 'salvar' };
+  if (/\b(renomei\w*|renomear|muda(r)? o nome|troca(r)? o nome|move|mover|mova|passa(r)? (o|a|os|as) .* pra pasta|cria|criar|crie|faz uma pasta|nova pasta|apaga\w*|exclui\w*|deleta\w*|lixeira|remove\w*|escreve\w*|adiciona\w*|acrescenta\w*|inclui\w*|edita\w*|altera\w*|substitui\w*|troca|corrige|atualiza\w*)\b/.test(t)) return { op: 'editar', text: String(text).slice(0, 600) };
   const ab = t.match(/^abre o (primeiro|segundo|terceiro|quarto|quinto)( arquivo)?( do drive)?$/);
   if (ab) return { op: 'abrir', n: ['primeiro', 'segundo', 'terceiro', 'quarto', 'quinto'].indexOf(ab[1]) };
   if (/\b(recentes?|ultimos arquivos|o que tem no (meu )?drive|meus arquivos do drive)\b/.test(t)) return { op: 'recentes' };

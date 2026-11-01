@@ -41,6 +41,10 @@ const ACTIONS_SCHEMA = {
     params: (p) => typeof p.to === 'string' && /^\d{11,15}$/.test(p.to) && typeof p.nome === 'string' && typeof p.text === 'string' && p.text.length > 0 && p.text.length <= 1000,
     risk: () => 'normal'
   },
+  'drive_trash': {   // arquivo do Google Drive para a lixeira do Drive (dá para restaurar por 30 dias)
+    params: (p) => typeof p.id === 'string' && /^[\w-]{10,100}$/.test(p.id) && typeof p.name === 'string',
+    risk: () => 'normal'
+  },
   'pc_power': {   // desligar ou reiniciar o PC (agendado pelo shutdown.exe; "cancela o desligamento" desfaz)
     params: (p) => ['desligar', 'reiniciar'].includes(p.op) && Number.isFinite(p.minutes) && p.minutes >= 0 && p.minutes <= 1440,
     risk: () => 'alto'

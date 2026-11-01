@@ -58,10 +58,14 @@ export async function api(method, path, body, retry = true) {
     body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(10000) });
   if (r.status === 401 && retry) { await access(true); return api(method, path, body, false); }
   if (r.status === 204 || r.status === 202) return null;
-  const j = await r.json().catch(() => null);
+  const raw = await r.text().catch(() => '');
+  let j = null; try { j = raw ? JSON.parse(raw) : null; } catch { /* às vezes o Spotify responde texto puro */ }
   if (!r.ok) {
-    const reason = j?.error?.reason || j?.error?.message || '';
-    const msg = r.status === 403 ? 'O Spotify só deixa controlar a música com conta Premium.' : r.status === 404 ? 'Nenhum Spotify aberto para tocar.' : r.status === 429 ? 'O Spotify pediu um tempo. Tente em instantes.' : `O Spotify respondeu com erro (${r.status}).`;
+    // Modo de desenvolvimento: só as contas cadastradas em "User Management" do app usam a API (não é falta de Premium).
+    const unregistered = r.status === 403 && /not be registered|not registered/i.test(raw);
+    const reason = unregistered ? 'not_registered' : j?.error?.reason || j?.error?.message || '';
+    const msg = unregistered ? 'Esta conta do Spotify não está cadastrada no app do Jarvis. No painel do Spotify (developer.spotify.com/dashboard), abra o app, vá em Settings > User Management e adicione o e-mail desta conta.'
+      : r.status === 403 ? 'O Spotify só deixa controlar a música com conta Premium.' : r.status === 404 ? 'Nenhum Spotify aberto para tocar.' : r.status === 429 ? 'O Spotify pediu um tempo. Tente em instantes.' : `O Spotify respondeu com erro (${r.status}).`;
     throw Object.assign(new Error(msg), { code: r.status, reason });
   }
   return j;

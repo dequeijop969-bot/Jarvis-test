@@ -11,8 +11,13 @@ export const CAL_WRITE_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
 export const DRIVE_READ_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
 export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 export const TASKS_SCOPE = 'https://www.googleapis.com/auth/tasks';
-export const canDrive = () => grantedScopes().includes(DRIVE_READ_SCOPE);
-export const canDriveSave = () => grantedScopes().includes(DRIVE_FILE_SCOPE);
+// Editar o Drive todo (renomear, mover, lixeira) e o texto dos Documentos Google. Quem conectou antes precisa reconectar.
+export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
+export const DOCS_SCOPE = 'https://www.googleapis.com/auth/documents';
+export const canDriveEdit = () => grantedScopes().includes(DRIVE_SCOPE);
+export const canDocs = () => grantedScopes().includes(DOCS_SCOPE);
+export const canDrive = () => grantedScopes().includes(DRIVE_READ_SCOPE) || grantedScopes().includes(DRIVE_SCOPE);
+export const canDriveSave = () => grantedScopes().includes(DRIVE_FILE_SCOPE) || grantedScopes().includes(DRIVE_SCOPE);
 export const canTasks = () => grantedScopes().includes(TASKS_SCOPE);
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
 export const grantedScopes = () => String(getTokens('google')?.scope || '').split(' ').filter(Boolean);
@@ -46,7 +51,7 @@ export function authRedirect() {
   if (DEMO) return `/auth/google/callback?state=${state}&code=demo`;
   const u = new URL(AUTH_URL);
   u.search = new URLSearchParams({
-    client_id: c.id, redirect_uri: c.redirect, response_type: 'code', scope: `${MODIFY_SCOPE} ${DRIVE_READ_SCOPE} ${DRIVE_FILE_SCOPE} ${TASKS_SCOPE}`, include_granted_scopes: 'true',
+    client_id: c.id, redirect_uri: c.redirect, response_type: 'code', scope: `${MODIFY_SCOPE} ${DRIVE_SCOPE} ${DOCS_SCOPE} ${TASKS_SCOPE}`, include_granted_scopes: 'true',
     access_type: 'offline', prompt: 'consent', state, code_challenge: challenge, code_challenge_method: 'S256'
   });
   return u.toString();

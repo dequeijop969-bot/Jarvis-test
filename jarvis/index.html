@@ -1797,6 +1797,12 @@ function showAction(a){
       if(x==='no'){try{await api('/api/actions/'+a.id+'/cancel')}catch{}closeSheet()}
       if(x==='yes'){e.target.disabled=true;try{await api('/api/actions/'+a.id+'/confirm',{via:'touch'});closeSheet();flash('Marcado na agenda.')}catch(er){closeSheet();flash(er.message||'Não consegui marcar o compromisso.')}}});
     return}
+  if(a.kind==='drive_trash'){
+    const d=sheet('<h3>Mandar para a lixeira do Drive?</h3><p><b>'+esc(a.params?.name||'')+'</b></p><p>Fica na lixeira do Drive por 30 dias. Você também pode dizer "confirmo".</p><div class="sheet-acts"><button class="btn" data-x="no">Cancelar</button><button class="btn pri" data-x="yes">Confirmar</button></div>');
+    d.addEventListener('click',async e=>{const x=e.target.dataset&&e.target.dataset.x;
+      if(x==='no'){try{await api('/api/actions/'+a.id+'/cancel')}catch{}closeSheet()}
+      if(x==='yes'){e.target.disabled=true;try{await api('/api/actions/'+a.id+'/confirm',{via:'touch'});closeSheet();flash('Na lixeira do Drive.')}catch(er){closeSheet();flash(er.message||'O Drive não deixou.',true)}}});
+    return}
   if(a.kind==='whatsapp_send'){
     const v=a.params||{};
     const d=sheet('<h3>Mandar no WhatsApp?</h3><p><b>'+esc(v.nome||'')+'</b></p><p class="wa-msg">'+esc(v.text||'')+'</p><p>Você também pode dizer "confirmo".</p><div class="sheet-acts"><button class="btn" data-x="no">Cancelar</button><button class="btn pri" data-x="yes">Enviar</button></div>');
